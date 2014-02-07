@@ -45,8 +45,8 @@ DEBUG = False
 MODE = 1
 FILE_NAME = 'pe_dif_sep2_98.nc' 
 FILE_NAME_CENTRAL_FORECAST = 'pe_fct_aug25_sep2.nc'
-INPUT_DATA_DIR = '../../data/in/ncdf/'
-OUTPUT_DATA_DIR = '../../data/out/pics/bv_interp/gmm9/'
+INPUT_DATA_DIR = '../../../../thesis_data/data/in/ncdf/'
+OUTPUT_DATA_DIR = '../../../../thesis_data/data/outRev/pics/bv_interp/'
 MODE_DIR1 = 'mode1/'
 MODE_DIR2 = 'mode2/'
 COM =  2
@@ -565,7 +565,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
         cur_inter_cov = params0[idx][1]
         cur_inter_ratio = params0[idx][2] 
         
-        x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov ,SAMPLES).T
+        x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov,SAMPLES).T
         
         total_dist_x = np.append(total_dist_x, x)
         total_dist_y = np.append(total_dist_y, y)
@@ -679,7 +679,16 @@ def interpFromGMM(ppos=[0.0,0.0]):
     #plotDistro( k, (-3, 3), (-3, 3),title='total lerp' )
     
     pars = True
-    
+
+    delta = 0.025
+    x = np.arange(-3.0, 3.0, delta)
+    y = np.arange(-2.0, 2.0, delta)
+    X, Y = np.meshgrid(x, y)
+    Z1 = mlab.bivariate_normal(X, Y, 1.0, 1.0, 0.0, 0.0)
+    Z2 = mlab.bivariate_normal(X, Y, 1.5, 0.5, 1, 1)
+    # difference of Gaussians
+    Z = 10.0 * (Z2 - Z1)
+
     return k
     
 def main():
