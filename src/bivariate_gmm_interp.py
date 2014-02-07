@@ -55,13 +55,13 @@ LAT = 9
 LEV = 16
 MEM = 600 
 
-EM_MAX_ITR = 5
+EM_MAX_ITR = 10
 EM_MAX_RESTARTS = 1000
 DEPTH = -2.0
 INTEGRATION_DIR = 'b'
 THRESHOLD_PER = 0.9 #percentage that second greatest peak needs to be of the max peak
-NUM_GAUSSIANS = 2
-MAX_GMM_COMP = NUM_GAUSSIANS 
+NUM_GAUSSIANS = 2#2
+MAX_GMM_COMP = 2#NUM_GAUSSIANS 
 
 g_cc = np.zeros(shape=(LAT,LON))
 
@@ -156,8 +156,28 @@ def getVclinSamples(gpt0, gpt1, gpt2, gpt3):
         gpt3_dist[1][idx] = vclin_y[idx][gpt3[0]][gpt3[1]]
    
     return gpt0_dist, gpt1_dist, gpt2_dist, gpt3_dist
+
+'''
+def bivariate_normal(X, Y, sigmax=1.0, sigmay=1.0, 
+    mux=0.0, muy=0.0, sigmaxy=0.0):
+    """
+    Bivariate Gaussian distribution for equal shape *X*, *Y*.
+    
+    See `bivariate normal
+    <http://mathworld.wolfram.com/BivariateNormalDistribution.
+     html>`_
+    at mathworld.
+    """
+    Xmu = X - mux
+    Ymu = Y - muy
+    rho = sigmaxy / (sigmax * sigmay)
+    z = Xmu ** 2 / sigmax ** 2 + Ymu ** 2 / sigmay ** 2 - 2 * rho * Xmu * Ymu 
+     / (sigmax * sigmay)
+    denom = 2 * np.pi * sigmax * sigmay * np.sqrt(1 - rho ** 2)
+    return np.exp(-z / (2 * (1 - rho ** 2))) / denom
+'''
  
-def plotDistro(kde,x_min_max,y_min_max,title=''):
+def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
     
     div = 200j
     div_real = 200
@@ -170,16 +190,32 @@ def plotDistro(kde,x_min_max,y_min_max,title=''):
     #positions = np.vstack([x_flat.ravel(), y_flat.ravel()])
     
     grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
-    z = kde(grid_coords.T)
+    #z = kde(grid_coords.T)
+    #z = z.reshape(div_real,div_real)
     
-    z = z.reshape(div_real,div_real)
+    Z_total = np.zeros(shape=(len(x_flat),len(y_flat)))
+    
+    for idx in range(0,len(params)):
+        cur_inter_mean  =  params[idx][0]
+        cur_inter_cov   =  params[idx][1]
+        cur_inter_ratio =  params[idx][2] 
+        
+        print 'interp ratio: ' + str(cur_inter_ratio)
+        
+        #x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov ,SAMPLES).T
+        
+        #instead of drawing samples from bv normal, get surface rep via matplot lib
+        Z_total += mlab.bivariate_normal(x, y, cur_inter_cov.item((0,0)), \
+                                   cur_inter_cov.item((1,1)), \
+                                   cur_inter_mean[0], cur_inter_mean[1] ) * cur_inter_ratio
+        
     
     fig = plt.figure()
     
     #p3.view_init(elev,azim)
                         
     ax = fig.gca(projection='3d')
-    surf = ax.plot_surface(x, y, z, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.0, color='b')#,,cmap=cm.spectral)
+    surf = ax.plot_surface(x, y, Z_total, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.0, color='b')#,,cmap=cm.spectral)
     
     ax.set_xticks([-4,-2,0,2,4])
     ax.set_yticks([-4,-2,0,2,4])
@@ -193,7 +229,7 @@ def plotDistro(kde,x_min_max,y_min_max,title=''):
     ax.set_ylim(y_flat.min(), y_flat.max())
         
     ax.set_zlabel('density')
-    ax.set_zlim(0, z.max())
+    ax.set_zlim(0, Z_total.max())
    
     #cb = fig.colorbar(surf, shrink=0.5, aspect=5)
     #cb.set_label('kde')
@@ -210,7 +246,7 @@ def plotDistro(kde,x_min_max,y_min_max,title=''):
     #plt.draw()
     #plt.savefig(OUTPUT_DATA_DIR + str(title) + "top.png")
          
-    #plt.show()    
+    plt.show()    
 
 def plotSpline(spline,x_min_max,y_min_max,title=''):
     
@@ -555,7 +591,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
         params0 = fitBvGmm(gp0_dist_transpose)
         g_grid_params_array[i][j] = params0
 
-    
+    '''
     total_dist_x = np.zeros(shape=0)
     total_dist_y = np.zeros(shape=0)
     #x = []
@@ -565,7 +601,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
         cur_inter_cov = params0[idx][1]
         cur_inter_ratio = params0[idx][2] 
         
-        x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov,SAMPLES).T
+        x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov,cur_inter_ratio*SAMPLES).T
         
         total_dist_x = np.append(total_dist_x, x)
         total_dist_y = np.append(total_dist_y, y)
@@ -576,6 +612,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
         
     total_dist = np.asarray([list(total_dist_x), list(total_dist_y)]).T                                  
     k = stats.kde.gaussian_kde( (total_dist[:,1], total_dist[:,0]) ) 
+    '''
     #plotDistro( stats.kde.gaussian_kde(gp0_dist), (-3, 3), (-3, 3),title='kde' )                                  
     #plotDistro( k, (-4, 4), (-4, 4),title='gp0' )
     
@@ -599,7 +636,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
         params2 = fitBvGmm(gp2_dist_transpose)
         g_grid_params_array[i][j] = params2
     
-    
+    '''
     total_dist_x = np.zeros(shape=0)
     total_dist_y = np.zeros(shape=0)
     #x = []
@@ -620,6 +657,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
         
     total_dist = np.asarray([list(total_dist_x), list(total_dist_y)]).T                                  
     k = stats.kde.gaussian_kde( (total_dist[:,1], total_dist[:,0]) ) 
+    '''
     #plotDistro( stats.kde.gaussian_kde(gp0_dist), (-3, 3), (-3, 3),title='kde' )                                  
     #plotDistro( k, (-4, 4), (-4, 4),title='gp2' )
     
@@ -655,6 +693,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
                                steps = 1, \
                                num_gs = MAX_GMM_COMP )
     
+    '''
     total_dist_x = np.zeros(shape=0)
     total_dist_y = np.zeros(shape=0)
     #x = []
@@ -670,26 +709,17 @@ def interpFromGMM(ppos=[0.0,0.0]):
         total_dist_y = np.append(total_dist_y, y)
         
         
-        #total_dist += list(np.asarray(r.mvrnorm( n = int(SAMPLES*cur_inter_ratio), mu = cur_inter_mean, Sigma = cur_inter_cov)))
-        
+        #total_dist += list(np.asarray(r.mvrnorm( n = int(SAMPLES*cur_inter_ratio), mu = cur_inter_mean, Sigma = cur_inter_cov)))    
         
     total_dist = np.asarray([list(total_dist_x), list(total_dist_y)]).T                                  
     k = stats.kde.gaussian_kde( (total_dist[:,1], total_dist[:,0]) ) 
+    '''
     #plotDistro( stats.kde.gaussian_kde(gp0_dist), (-3, 3), (-3, 3),title='kde' )                                  
     #plotDistro( k, (-3, 3), (-3, 3),title='total lerp' )
     
     pars = True
 
-    delta = 0.025
-    x = np.arange(-3.0, 3.0, delta)
-    y = np.arange(-2.0, 2.0, delta)
-    X, Y = np.meshgrid(x, y)
-    Z1 = mlab.bivariate_normal(X, Y, 1.0, 1.0, 0.0, 0.0)
-    Z2 = mlab.bivariate_normal(X, Y, 1.5, 0.5, 1, 1)
-    # difference of Gaussians
-    Z = 10.0 * (Z2 - Z1)
-
-    return k
+    return lerp_params
     
 def main():
     #gen_streamlines = str(sys.argv[1])
@@ -724,8 +754,8 @@ def main():
           
         for idx in range(0,11):
             print idx
-            kde = interpFromGMM([ppos[0],ppos[1]+float(float(idx)/10.)])
-            plotDistro( kde, (-4,4), (-4,4), str(idx) + '_bivar_gmm_lerp_' )
+            lerp_params = interpFromGMM([ppos[0],ppos[1]+float(float(idx)/10.)])
+            plotDistro( (-4,4), (-4,4), str(idx) + '_bivar_gmm_lerp_', params = lerp_params )
         
     else:
         print "reading particles"
