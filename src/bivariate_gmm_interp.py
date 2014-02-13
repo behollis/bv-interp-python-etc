@@ -30,9 +30,12 @@ e_prev_max_vel_y = 0.0
 gmm_prev_max_vel_x = 0.0
 gmm_prev_max_vel_y = 0.0
 
+COM =  2
+LON = 53
+LAT = 90
+LEV = 16
+MEM = 600 
 
-TOTAL_STEPS = 25
-integration_step_size = 0.1
 
 SEED_LEVEL = 0
 vclin = []
@@ -41,21 +44,26 @@ cf_vclin = []
 reused_vel_quantile = 0
 
 DEBUG = False
+
+
+INPUT_DATA_DIR = '/home/behollis/thesis_data/data/in/ncdf/'
+#OUTPUT_DATA_DIR = '/home/behollis/thesis_data/data/outRev/gpDist/'
   
 MODE = 1
 FILE_NAME = 'pe_dif_sep2_98.nc' 
 FILE_NAME_CENTRAL_FORECAST = 'pe_fct_aug25_sep2.nc'
-INPUT_DATA_DIR = '../../../../thesis_data/data/in/ncdf/'
+#INPUT_DATA_DIR = '../../../../thesis_data/data/in/ncdf/'
 OUTPUT_DATA_DIR = '../../../../thesis_data/data/outRev/pics/bv_interp/'
 MODE_DIR1 = 'mode1/'
 MODE_DIR2 = 'mode2/'
-COM =  2
-LON = 9
-LAT = 9
-LEV = 16
-MEM = 600 
 
-EM_MAX_ITR = 10
+#COM =  2
+#LON = 9
+#LAT = 9
+#LEV = 16
+#MEM = 600 
+
+EM_MAX_ITR = 5
 EM_MAX_RESTARTS = 1000
 DEPTH = -2.0
 INTEGRATION_DIR = 'b'
@@ -76,9 +84,9 @@ r = robjects.r
 
 ZERO_ARRAY = np.zeros(shape=(MEM,1))
 
-SAMPLES = 1000
-vclin_x = np.ndarray(shape=(SAMPLES,10,10))
-vclin_y = np.ndarray(shape=(SAMPLES,10,10))
+SAMPLES = 600
+vclin_x = np.ndarray(shape=(SAMPLES,LAT,LON))
+vclin_y = np.ndarray(shape=(SAMPLES,LAT,LON))
 
 divs = 100
 div = complex(divs)
@@ -142,7 +150,8 @@ def getVclinSamples(gpt0, gpt1, gpt2, gpt3):
     gpt2_dist = np.zeros(shape=(2,SAMPLES))
     gpt3_dist = np.zeros(shape=(2,SAMPLES))
     
-    for idx in range(0,SAMPLES):
+    for idx in range(0,MEM):#SAMPLES):
+        '''
         gpt0_dist[0][idx] = vclin_x[idx][gpt0[0]][gpt0[1]]
         gpt0_dist[1][idx] = vclin_y[idx][gpt0[0]][gpt0[1]]
         
@@ -154,6 +163,19 @@ def getVclinSamples(gpt0, gpt1, gpt2, gpt3):
         
         gpt3_dist[0][idx] = vclin_x[idx][gpt3[0]][gpt3[1]]
         gpt3_dist[1][idx] = vclin_y[idx][gpt3[0]][gpt3[1]]
+        '''
+        
+        gpt0_dist[0][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][0]
+        gpt0_dist[1][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][1]
+         
+        gpt1_dist[0][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][0]
+        gpt1_dist[1][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][1] 
+        
+        gpt2_dist[0][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][0]
+        gpt2_dist[1][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][1] 
+        
+        gpt3_dist[0][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][0]
+        gpt3_dist[1][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][1] 
    
     return gpt0_dist, gpt1_dist, gpt2_dist, gpt3_dist
 
@@ -176,8 +198,34 @@ def bivariate_normal(X, Y, sigmax=1.0, sigmay=1.0,
     denom = 2 * np.pi * sigmax * sigmay * np.sqrt(1 - rho ** 2)
     return np.exp(-z / (2 * (1 - rho ** 2))) / denom
 '''
- 
-def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
+
+def plotKDE(kde,distro,title):
+    div = 200j
+    div_real = 200
+    
+    FIG = plt.figure()
+    
+    x_flat = np.r_[np.asarray(distro[0]).min():np.asarray(distro[0]).max():div]
+    y_flat = np.r_[np.asarray(distro[1]).min():np.asarray(distro[1]).max():div]
+    x,y = np.meshgrid(x_flat,y_flat)
+    
+    grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
+    z = kde(grid_coords.T)
+    
+    z = z.reshape(div_real,div_real)
+    
+    AX = FIG.gca(projection='3d')
+    AX.set_xlabel('u')
+    AX.set_ylabel('v')
+    AX.set_xlim(x_flat.max(), x_flat.min())
+    AX.set_ylim(y_flat.min(), y_flat.max())
+    AX.set_zlabel('density')
+    AX.set_zlim(0, z.max())
+    AX.plot_surface(x, y, z, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.2, color='green')
+    plt.savefig(OUTPUT_DATA_DIR + title + ".jpg")
+    #plt.show() 
+
+def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0],color='b'):
     
     div = 200j
     div_real = 200
@@ -204,10 +252,12 @@ def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
         
         #x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov ,SAMPLES).T
         
+        '''IMPORTANT: x and y axes are swapped between kde and rpy2 vectors!!!! '''
+        
         #instead of drawing samples from bv normal, get surface rep via matplot lib
-        Z_total += mlab.bivariate_normal(x, y, cur_inter_cov.item((0,0)), \
-                                   cur_inter_cov.item((1,1)), \
-                                   cur_inter_mean[0], cur_inter_mean[1] ) * cur_inter_ratio
+        Z_total += mlab.bivariate_normal(x, y, cur_inter_cov.item((1,1)), \
+                                   cur_inter_cov.item((0,0)), \
+                                   cur_inter_mean[1], cur_inter_mean[0] ) * cur_inter_ratio
         
     
     fig = plt.figure()
@@ -215,17 +265,17 @@ def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
     #p3.view_init(elev,azim)
                         
     ax = fig.gca(projection='3d')
-    surf = ax.plot_surface(x, y, Z_total, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.0, color='b')#,,cmap=cm.spectral)
+    surf = ax.plot_surface(x, y, Z_total, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.2, color=color)#,,cmap=cm.spectral)
     
-    ax.set_xticks([-4,-2,0,2,4])
-    ax.set_yticks([-4,-2,0,2,4])
+    #ax.set_xticks([-4,-2,0,2,4])
+    #ax.set_yticks([-4,-2,0,2,4])
     #cset = ax.contour(x, y, z, zdir='y', offset=y_flat.max(),antialiased=True,colors='r')
     #cset = ax.contour(x, y, z, zdir='x', offset=x_flat.min(),antialiased=True, colors='b')
   
     ax.set_xlabel('u')
     ax.set_ylabel('v')
     
-    ax.set_xlim(x_flat.min(), x_flat.max())
+    ax.set_xlim(x_flat.max(), x_flat.min())
     ax.set_ylim(y_flat.min(), y_flat.max())
         
     ax.set_zlabel('density')
@@ -240,13 +290,13 @@ def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
     #    ax.view_init(30, angle)
     #    plt.draw()
     #    plt.savefig(OUTPUT_DATA_DIR + str(title) +str(angle)+ ".png")
-    plt.savefig(OUTPUT_DATA_DIR + str(title)+ "2.png")
+    plt.savefig(OUTPUT_DATA_DIR + str(title) + ".jpg")
     
     #ax.view_init(90, 90 )
     #plt.draw()
     #plt.savefig(OUTPUT_DATA_DIR + str(title) + "top.png")
          
-    plt.show()    
+    #plt.show()    
 
 def plotSpline(spline,x_min_max,y_min_max,title=''):
     
@@ -725,12 +775,13 @@ def main():
     #gen_streamlines = str(sys.argv[1])
     
     r.library('mixtools')
+    loadNetCdfData()
+    createGlobalParametersArray(LAT,LON)
     
     #vclin = np.zeros(shape=(10,10,2))
     
-    defineVclin()
-    
-    createGlobalParametersArray(LAT,LON)
+    #defineVclin()
+    #createGlobalParametersArray(LAT,LON)
     
     SEED_LAT = 4 #x dim
     SEED_LON = 4 #y dim
@@ -749,13 +800,34 @@ def main():
         #g_part_positions_ensemble[1].append(SEED_LON) 
         #g_part_positions_ensemble[2].append(DEPTH) 
         
-        ppos = [SEED_LAT,SEED_LON]
+        ppos = [44.0,31.0]
        
           
-        for idx in range(0,11):
+        for idx in range(0,3):#,11):
+            ypos = ppos[1] + idx 
+            title1 = str(ppos[0]) + '_' + str(ypos) + '_gmm'
+            title2 = str(ppos[0]) + '_' + str(ypos) + '_kde'
+            title3 = str(ppos[0]) + '_' + str(ypos) + '_mean'
+            
             print idx
-            lerp_params = interpFromGMM([ppos[0],ppos[1]+float(float(idx)/10.)])
-            plotDistro( (-4,4), (-4,4), str(idx) + '_bivar_gmm_lerp_', params = lerp_params )
+            distro = getVclinSamplesSingle([ppos[0],ypos])
+            kde = stats.kde.gaussian_kde(distro)
+            plotKDE(kde,distro, title2)
+            
+            x_min = np.asarray(distro[0]).min()
+            x_max = np.asarray(distro[0]).max()
+            y_min = np.asarray(distro[1]).min()
+            y_max = np.asarray(distro[1]).max()
+            
+            #find single gaussian
+            mu_uv = np.mean(distro, axis=1)
+            var_uv = np.var(distro, axis=1)
+            cov = np.zeros(shape=(2,2)); cov[0,0] = var_uv[1]; cov[1,1] = var_uv[0]
+            mean_params = [[(mu_uv[1], mu_uv[0]), cov, 1.0]]
+            plotDistro( (x_min,x_max), (y_min,y_max), title3, params = mean_params,color='purple' ) 
+            
+            lerp_params = interpFromGMM([ppos[0],ypos])#float(float(idx)/10.)])
+            plotDistro( (x_min,x_max), (y_min,y_max), title1, params = lerp_params,color='red' )
         
     else:
         print "reading particles"
@@ -770,6 +842,35 @@ def main():
 
 #from rpy2.robjects.numpy2ri import numpy2ri
 #robjects.conversion.py2ri = numpy2ri
+def getVclinSamplesSingle(gpt):
+    
+    global vclin
+    
+    gpt0_dist = np.zeros(shape=(2,MEM))
+   
+    for idx in range(0,MEM):
+        gpt0_dist[0][idx] = vclin[idx][gpt[0]][gpt[1]][SEED_LEVEL][0]
+        gpt0_dist[1][idx] = vclin[idx][gpt[0]][gpt[1]][SEED_LEVEL][1]
+   
+    return gpt0_dist
+
+def loadNetCdfData():
+    global vclin
+    
+    #realizations file 
+    pe_dif_sep2_98_file = INPUT_DATA_DIR + FILE_NAME
+    pe_fct_aug25_sep2_file = INPUT_DATA_DIR + FILE_NAME_CENTRAL_FORECAST 
+    
+    #realizations reader 
+    rreader = NetcdfReader(pe_dif_sep2_98_file)
+    
+    #central forecasts reader 
+    creader = NetcdfReader(pe_fct_aug25_sep2_file)
+    vclin8 = creader.readVarArray('vclin', 7)
+    
+    #deviations from central forecast for all 600 realizations
+    vclin = rreader.readVarArray('vclin')  
+    vclin = addCentralForecast(vclin, vclin8, level_start=SEED_LEVEL, level_end=SEED_LEVEL)  
 
 import rpy2.robjects.numpy2ri as rpyn
 #vector=rpyn.ri2numpy(vector_R)
