@@ -63,13 +63,13 @@ MODE_DIR2 = 'mode2/'
 #LEV = 16
 #MEM = 600 
 
-EM_MAX_ITR = 5
+EM_MAX_ITR = 15
 EM_MAX_RESTARTS = 1000
 DEPTH = -2.0
 INTEGRATION_DIR = 'b'
 THRESHOLD_PER = 0.9 #percentage that second greatest peak needs to be of the max peak
-NUM_GAUSSIANS = 2#2
-MAX_GMM_COMP = 2#NUM_GAUSSIANS 
+NUM_GAUSSIANS = 3#2
+MAX_GMM_COMP = 3#NUM_GAUSSIANS 
 
 g_cc = np.zeros(shape=(LAT,LON))
 
@@ -620,7 +620,7 @@ def interpVelFromEnsemble(ppos=[0.0,0.0]):
         print "kde not working"
         return None
   
-def interpFromGMM(ppos=[0.0,0.0]):
+def interpFromGMM(ppos=[0.0,0.0], ignore_cache = 'False'):
     
     ppos_parts = getCoordParts(ppos)
     
@@ -634,7 +634,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
     i = int(gp0[0])
     j = int(gp0[1])
     params0 = g_grid_params_array[i][j] 
-    if len(params0) == 0: 
+    if len(params0) == 0 or ignore_cache is 'True': 
         gp0_dist_transpose = gp0_dist.T
         #swap columns, i.e. u and v comps after transposing matrix
         gp0_dist_transpose[:,[0, 1]] = gp0_dist_transpose[:,[1, 0]]
@@ -669,7 +669,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
     i = int(gp1[0])
     j = int(gp1[1])
     params1 = g_grid_params_array[i][j] 
-    if len(params1) == 0: 
+    if len(params1) == 0 or ignore_cache is 'True': 
         gp1_dist_transpose = gp1_dist.T
         #swap columns, i.e. u and v comps after transposing matrix
         gp1_dist_transpose[:,[0, 1]] = gp1_dist_transpose[:,[1, 0]]
@@ -679,7 +679,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
     i = int(gp2[0])
     j = int(gp2[1])    
     params2 = g_grid_params_array[i][j] 
-    if len(params2) == 0:
+    if len(params2) == 0 or ignore_cache is 'True':
         gp2_dist_transpose = gp2_dist.T
         #swap columns, i.e. u and v comps after transposing matrix
         gp2_dist_transpose[:,[0, 1]] = gp2_dist_transpose[:,[1, 0]]
@@ -714,7 +714,7 @@ def interpFromGMM(ppos=[0.0,0.0]):
     i = int(gp3[0])
     j = int(gp3[1])
     params3 = g_grid_params_array[i][j] 
-    if len(params3) == 0:
+    if len(params3) == 0 or ignore_cache is 'True':
         gp3_dist_transpose = gp3_dist.T
         #swap columns, i.e. u and v comps after transposing matrix
         gp3_dist_transpose[:,[0, 1]] = gp3_dist_transpose[:,[1, 0]]
@@ -805,7 +805,7 @@ def main():
           
         for idx in range(0,3):#,11):
             ypos = ppos[1] + idx 
-            title1 = str(ppos[0]) + '_' + str(ypos) + '_gmm'
+            
             title2 = str(ppos[0]) + '_' + str(ypos) + '_kde'
             title3 = str(ppos[0]) + '_' + str(ypos) + '_mean'
             
@@ -826,8 +826,14 @@ def main():
             mean_params = [[(mu_uv[1], mu_uv[0]), cov, 1.0]]
             plotDistro( (x_min,x_max), (y_min,y_max), title3, params = mean_params,color='purple' ) 
             
-            lerp_params = interpFromGMM([ppos[0],ypos])#float(float(idx)/10.)])
-            plotDistro( (x_min,x_max), (y_min,y_max), title1, params = lerp_params,color='red' )
+            for g in range(2,11):
+                NUM_GAUSSIANS = g
+                MAX_GMM_COMP = g
+                for itr in range(5,21,5):
+                    EM_MAX_ITR = itr
+                    title1 = str(ppos[0]) + '_' + str(ypos) + '_gmm_' + str(g) + '_iter_' + str(itr)
+                    lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True')#float(float(idx)/10.)])
+                    plotDistro( (x_min,x_max), (y_min,y_max), title1, params = lerp_params,color='red' )
         
     else:
         print "reading particles"

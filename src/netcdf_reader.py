@@ -12,7 +12,7 @@ FILE_NAME = 'pe_dif_sep2_98.nc'
 FILE_NAME_CENTRAL_FORECAST = 'pe_fct_aug25_sep2.nc'
 #OUTPUT_FILE_NAME = "..//..//mass_bay.vts"
 #OUTPUT_FILE_NAME_LEGACY_VTK = "..//..//mass_bay.vtk"
-INPUT_DATA_DIR = '../../data/in/ncdf/'
+INPUT_DATA_DIR = '/home/behollis/thesis_data/data/in/ncdf/'
 OUTPUT_DATA_DIR = '../../data/out/csv/'
 VCLIN_LAYER_FILE_BASENAME = "_vclin_outlev.vti"
 #holds lat, lon and meter length depth info for grid indices...lat,lon and outlev
