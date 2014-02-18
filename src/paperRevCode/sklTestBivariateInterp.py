@@ -55,7 +55,7 @@ INPUT_DATA_DIR = '/home/behollis/thesis_data/data/in/ncdf/'
 FILE_NAME = 'pe_dif_sep2_98.nc' 
 FILE_NAME_CENTRAL_FORECAST = 'pe_fct_aug25_sep2.nc'
 INPUT_DATA_DIR = '/home/behollis/thesis_data/data/in/ncdf/'
-OUTPUT_DATA_DIR = '/home/behollis/thesis_data/data/outRev/gpDist/'
+OUTPUT_DATA_DIR = '/home/behollis/thesis_data/data/outRev/pics/bv_interp/'
 
 #COM =  2
 #LON = 9
@@ -258,21 +258,6 @@ def bivariate_normal(X, Y, sigmax=1.0, sigmay=1.0,
     return np.exp(-z / (2 * (1 - rho ** 2))) / denom
 '''
 
-def getKDE(kde,distro):
-    div = 200j
-    div_real = 200
-    
-    x_flat = np.r_[np.asarray(distro[0]).min():np.asarray(distro[0]).max():div]
-    y_flat = np.r_[np.asarray(distro[1]).min():np.asarray(distro[1]).max():div]
-    x,y = np.meshgrid(x_flat,y_flat)
-    
-    grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
-    z = kde(grid_coords.T)
-    
-    z = z.reshape(div_real,div_real)
-    
-    return z
-    
 def plotKDE(kde,distro,title):
     div = 200j
     div_real = 200
@@ -298,8 +283,27 @@ def plotKDE(kde,distro,title):
     AX.plot_surface(x, y, z, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.2, color='green')
     plt.savefig(OUTPUT_DATA_DIR + title + ".jpg")
     #plt.show() 
+  
+def getKDE(x_min_max,y_min_max,kde):
+    div = 200j
+    div_real = 200
     
-def getBivariateGMM(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
+    #x_flat = np.r_[np.asarray(distro[0]).min():np.asarray(distro[0]).max():div]
+    #y_flat = np.r_[np.asarray(distro[1]).min():np.asarray(distro[1]).max():div]
+    #x,y = np.meshgrid(x_flat,y_flat)
+    
+    x_flat = np.r_[x_min_max[0]:x_min_max[1]:div]
+    y_flat = np.r_[y_min_max[0]:y_min_max[1]:div]
+    x,y = np.meshgrid(x_flat,y_flat)
+    
+    grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
+    z = kde(grid_coords.T)
+    
+    z = z.reshape(div_real,div_real)
+    
+    return z
+  
+def getBivariateGMM(x_min_max,y_min_max,params = [0.0,0.0,0.0]):
     div = 200j
     div_real = 200
 
@@ -883,6 +887,12 @@ def interpFromGMM(ppos=[0.0,0.0], ignore_cache = 'False'):
 def main():
     #gen_streamlines = str(sys.argv[1])
     
+    global NUM_GAUSSIANS, MAX_GMM_COMP, EM_MAX_ITR
+      
+    NUM_GAUSSIANS = 2
+    MAX_GMM_COMP = 2
+    EM_MAX_ITR = 5
+    
     r.library('mixtools')
     loadNetCdfData()
     createGlobalParametersArray(LAT,LON)
@@ -915,35 +925,47 @@ def main():
         for idx in range(0,3):#,11):
             ypos = ppos[1] + idx 
             
-            title2 = str(ppos[0]) + '_' + str(ypos) + '_kde'
-            title3 = str(ppos[0]) + '_' + str(ypos) + '_mean'
-            
             print idx
             distro = getVclinSamplesSingle([ppos[0],ypos])
             kde = stats.kde.gaussian_kde(distro)
-            plotKDE(kde,distro, title2)
             
             x_min = np.asarray(distro[0]).min()
             x_max = np.asarray(distro[0]).max()
             y_min = np.asarray(distro[1]).min()
             y_max = np.asarray(distro[1]).max()
             
+            mfunc1 = getKDE((x_min,x_max), (y_min,y_max),kde)
+            
             #find single gaussian
             mu_uv = np.mean(distro, axis=1)
             var_uv = np.var(distro, axis=1)
             cov = np.zeros(shape=(2,2)); cov[0,0] = var_uv[1]; cov[1,1] = var_uv[0]
             mean_params = [[(mu_uv[1], mu_uv[0]), cov, 1.0]]
+            bivG = getBivariateGMM((x_min,x_max), (y_min,y_max), params = mean_params)
             
-            bivG = getBivariateGMM((x_min,x_max), (y_min,y_max), title3, params = mean_params)
+            lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True')
+            bivGMM = getBivariateGMM((x_min,x_max), (y_min,y_max), params = lerp_params)
             
-            skl = kl_div_2D(mfunc=bivG, kde=kde, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-            skl2 = kl_div_2D_M(mfunc1=bivG, mfunc2=getKDE(kde,distro), min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-            skl3 = kl_div_2D_M(mfunc1=getKDE(kde,distro), mfunc2=getKDE(kde,distro), min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl1 = kl_div_2D_M(mfunc1, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
             
-            print 'skl value for kde || gaussian approx: ' + str(skl)
-            print 'skl value for m kde || gaussian approx: ' + str(skl2)
-            print 'skl value for m kde || m kde: ' + str(skl3)
+            skl2f = kl_div_2D_M(mfunc1, bivG, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl2b = kl_div_2D_M(bivG, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl2 = skl2f + skl2b
             
+            skl3f = kl_div_2D_M(mfunc1=bivGMM, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl3b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=bivGMM, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl3 = skl3f + skl3b
+            
+            title1 = str(ppos[0]) + '_' + str(ypos) + '_kde_' + str(skl1)
+            title2 = str(ppos[0]) + '_' + str(ypos) + '_g_' + str(skl2)
+            title3 = str(ppos[0]) + '_' + str(ypos) + '_gmm_' + str(skl3)
+            
+            lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True')
+             
+            plotKDE(kde,distro, title1)
+            plotDistro((x_min,x_max), (y_min,y_max), title2, params = mean_params,color='purple')
+            plotDistro((x_min,x_max), (y_min,y_max), title3, params = lerp_params,color='red')
+           
             #plotDistro( (x_min,x_max), (y_min,y_max), title3, params = mean_params,color='purple' ) 
           
 '''  
@@ -979,7 +1001,8 @@ def kl_div_2D_M(mfunc1,mfunc2,min_x=-5, max_x=5, min_y=-5, max_y=5):
             else:
                 D +=  mfunc1[u,v]
     return D 
-
+'''
+#this impl can't be correct unless there is coversion between indices and u,v coords for both kde / mfunc
 def kl_div_2D(mfunc,kde,min_x=-5, max_x=5, min_y=-5, max_y=5):
     "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
     D = .0
@@ -1002,6 +1025,7 @@ def kl_div_2D(mfunc,kde,min_x=-5, max_x=5, min_y=-5, max_y=5):
             else:
                 D +=  kde([u,v])[0]
     return D 
+'''
     
 ########################################################################################################
 
