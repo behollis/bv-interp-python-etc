@@ -95,7 +95,66 @@ start = -3
 end = +3
 TOL = 0.01
 
-#field = [[]]
+
+def lerpBivGMMPair(norm_params1, norm_params2, alpha, steps=1, num_gs=3):     
+    ''' handles equal number of constituent gaussians '''
+    # pair based on gaussian contribution to gmm
+    sorted(norm_params2, key=operator.itemgetter(2), reverse=False)
+    sorted(norm_params1, key=operator.itemgetter(2), reverse=False)
+    
+    if steps != 0:  
+        incr = alpha / steps
+    else:
+        incr = alpha
+        
+    interpolant_params = []    
+    for idx in range(0,num_gs):
+        #get vector between means
+        mean_vec = np.asarray(norm_params2[idx][0]) - np.asarray(norm_params1[idx][0])
+        dist = np.sqrt(np.dot(mean_vec, mean_vec))
+        mean_vec_n = mean_vec / dist
+        
+        interpolant_mean = np.asarray(norm_params1[idx][0]) + alpha * dist * mean_vec_n
+        interpolant_cov = np.matrix(norm_params1[idx][1]) * (1.-alpha) + np.matrix(norm_params2[idx][1]) * alpha
+        interpolant_ratio = norm_params1[idx][2] * (1.-alpha) + norm_params2[idx][2] * alpha 
+        
+        interpolant_params.append([interpolant_mean, interpolant_cov, interpolant_ratio])                                                                 
+   
+    '''
+    for idx in range(0,steps+1):
+        #resort to minimize distances in means of pairings
+        sorted(norm_params1, key=operator.itemgetter(0), reverse=False)
+                
+        subalpha = float(idx) * incr
+        
+        inter_means = []; inter_stdevs = []; inter_comp_ratios = []
+        
+        max_comps = len(norm_params1)
+        
+        if max_comps < len(norm_params2):
+            max_comps = len(norm_params2)
+        
+        # interpolate each gaussian
+        for idx in range(0,max_comps):
+            cur_mean1 = norm_params1[idx][0]
+            cur_std1 = norm_params1[idx][1]
+            cur_ratio1 = norm_params1[idx][2]
+        
+            cur_mean2 = norm_params2[idx][0]
+            cur_std2 = norm_params2[idx][1]
+            cur_ratio2 = norm_params2[idx][2]
+            
+            inter_means.append(cur_mean1*(1.0-subalpha) + cur_mean2*subalpha)
+            inter_stdevs.append(cur_std1*(1.0-subalpha) + cur_std2*subalpha)
+            inter_comp_ratios.append(cur_ratio1*(1.0-subalpha) + cur_ratio2*subalpha)
+            
+        norm_params1 = []
+        for j in range(len(inter_means)):    
+            norm_params1.append([inter_means[j], inter_stdevs[j], inter_comp_ratios[j]])
+    '''
+    
+    #return interp GMM params
+    return interpolant_params
 
 #3d np array for storing parameters found for grid points
 #check this array first before fitting g comps
@@ -199,6 +258,21 @@ def bivariate_normal(X, Y, sigmax=1.0, sigmay=1.0,
     return np.exp(-z / (2 * (1 - rho ** 2))) / denom
 '''
 
+def getKDE(kde,distro):
+    div = 200j
+    div_real = 200
+    
+    x_flat = np.r_[np.asarray(distro[0]).min():np.asarray(distro[0]).max():div]
+    y_flat = np.r_[np.asarray(distro[1]).min():np.asarray(distro[1]).max():div]
+    x,y = np.meshgrid(x_flat,y_flat)
+    
+    grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
+    z = kde(grid_coords.T)
+    
+    z = z.reshape(div_real,div_real)
+    
+    return z
+    
 def plotKDE(kde,distro,title):
     div = 200j
     div_real = 200
@@ -224,6 +298,41 @@ def plotKDE(kde,distro,title):
     AX.plot_surface(x, y, z, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=0.2, color='green')
     plt.savefig(OUTPUT_DATA_DIR + title + ".jpg")
     #plt.show() 
+    
+def getBivariateGMM(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0]):
+    div = 200j
+    div_real = 200
+
+    # Regular grid to evaluate kde upon
+    x_flat = np.r_[x_min_max[0]:x_min_max[1]:div]
+    y_flat = np.r_[y_min_max[0]:y_min_max[1]:div]
+    x,y = np.meshgrid(x_flat,y_flat)
+    
+    #positions = np.vstack([x_flat.ravel(), y_flat.ravel()])
+    
+    grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
+    #z = kde(grid_coords.T)
+    #z = z.reshape(div_real,div_real)
+    
+    Z_total = np.zeros(shape=(len(x_flat),len(y_flat)))
+    
+    for idx in range(0,len(params)):
+        cur_inter_mean  =  params[idx][0]
+        cur_inter_cov   =  params[idx][1]
+        cur_inter_ratio =  params[idx][2] 
+        
+        print 'interp ratio: ' + str(cur_inter_ratio)
+        
+        #x,y = np.random.multivariate_normal(cur_inter_mean,cur_inter_cov ,SAMPLES).T
+        
+        '''IMPORTANT: x and y axes are swapped between kde and rpy2 vectors!!!! '''
+        
+        #instead of drawing samples from bv normal, get surface rep via matplot lib
+        Z_total += mlab.bivariate_normal(x, y, cur_inter_cov.item((1,1)), \
+                                   cur_inter_cov.item((0,0)), \
+                                   cur_inter_mean[1], cur_inter_mean[0] ) * cur_inter_ratio
+                                   
+    return Z_total
 
 def plotDistro(x_min_max,y_min_max,title='', params = [0.0,0.0,0.0],color='b'):
     
@@ -824,8 +933,20 @@ def main():
             var_uv = np.var(distro, axis=1)
             cov = np.zeros(shape=(2,2)); cov[0,0] = var_uv[1]; cov[1,1] = var_uv[0]
             mean_params = [[(mu_uv[1], mu_uv[0]), cov, 1.0]]
-            plotDistro( (x_min,x_max), (y_min,y_max), title3, params = mean_params,color='purple' ) 
             
+            bivG = getBivariateGMM((x_min,x_max), (y_min,y_max), title3, params = mean_params)
+            
+            skl = kl_div_2D(mfunc=bivG, kde=kde, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl2 = kl_div_2D_M(mfunc1=bivG, mfunc2=getKDE(kde,distro), min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl3 = kl_div_2D_M(mfunc1=getKDE(kde,distro), mfunc2=getKDE(kde,distro), min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            
+            print 'skl value for kde || gaussian approx: ' + str(skl)
+            print 'skl value for m kde || gaussian approx: ' + str(skl2)
+            print 'skl value for m kde || m kde: ' + str(skl3)
+            
+            #plotDistro( (x_min,x_max), (y_min,y_max), title3, params = mean_params,color='purple' ) 
+          
+'''  
             for g in range(2,11):
                 NUM_GAUSSIANS = g
                 MAX_GMM_COMP = g
@@ -834,15 +955,53 @@ def main():
                     title1 = str(ppos[0]) + '_' + str(ypos) + '_gmm_' + str(g) + '_iter_' + str(itr)
                     lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True')#float(float(idx)/10.)])
                     plotDistro( (x_min,x_max), (y_min,y_max), title1, params = lerp_params,color='red' )
-        
-    else:
-        print "reading particles"
-        #readParticles()  
-        #plotParticles(ts_per_gp)
-        
-    print "finished!"
+'''
 
+def kl_div_2D_M(mfunc1,mfunc2,min_x=-5, max_x=5, min_y=-5, max_y=5):
+    "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
+    D = .0
+    #i = min_x
+    div = 10j
 
+    # Regular grid to evaluate kde upon
+    u_vals = np.r_[min_x:max_x:div]
+    v_vals = np.r_[min_y:max_y:div]
+    
+    #incr = math.fabs(min_x - max_x) / div
+    for u in u_vals:
+        for v in v_vals:
+            if mfunc1[u,v] != .0:
+                #print A(i)
+                D += mfunc1[u,v] * math.log( mfunc1[u,v] / mfunc2[u,v] ) 
+                #print u
+                #print v
+                #print mfunc[u,v] * math.log( mfunc[u,v] / kde([u,v])[0] )
+            else:
+                D +=  mfunc1[u,v]
+    return D 
+
+def kl_div_2D(mfunc,kde,min_x=-5, max_x=5, min_y=-5, max_y=5):
+    "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
+    D = .0
+    #i = min_x
+    div = 10j
+
+    # Regular grid to evaluate kde upon
+    u_vals = np.r_[min_x:max_x:div]
+    v_vals = np.r_[min_y:max_y:div]
+    
+    #incr = math.fabs(min_x - max_x) / div
+    for u in u_vals:
+        for v in v_vals:
+            if mfunc[u,v] != .0:
+                #print A(i)
+                D += mfunc[u,v] * math.log( mfunc[u,v] / kde([u,v])[0] ) 
+                #print u
+                #print v
+                #print mfunc[u,v] * math.log( mfunc[u,v] / kde([u,v])[0] )
+            else:
+                D +=  kde([u,v])[0]
+    return D 
     
 ########################################################################################################
 
@@ -936,66 +1095,6 @@ def fitBvGmm(gp, max_gs=NUM_GAUSSIANS):
 
     return n_params 
 
-def lerpBivGMMPair(norm_params1, norm_params2, alpha, steps=1, num_gs=3):     
-    ''' handles equal number of constituent gaussians '''
-    # pair based on gaussian contribution to gmm
-    sorted(norm_params2, key=operator.itemgetter(2), reverse=False)
-    sorted(norm_params1, key=operator.itemgetter(2), reverse=False)
-    
-    if steps != 0:  
-        incr = alpha / steps
-    else:
-        incr = alpha
-        
-    interpolant_params = []    
-    for idx in range(0,num_gs):
-        #get vector between means
-        mean_vec = np.asarray(norm_params2[idx][0]) - np.asarray(norm_params1[idx][0])
-        dist = np.sqrt(np.dot(mean_vec, mean_vec))
-        mean_vec_n = mean_vec / dist
-        
-        interpolant_mean = np.asarray(norm_params1[idx][0]) + alpha * dist * mean_vec_n
-        interpolant_cov = np.matrix(norm_params1[idx][1]) * (1.-alpha) + np.matrix(norm_params2[idx][1]) * alpha
-        interpolant_ratio = norm_params1[idx][2] * (1.-alpha) + norm_params2[idx][2] * alpha 
-        
-        interpolant_params.append([interpolant_mean, interpolant_cov, interpolant_ratio])                                                                 
-   
-    '''
-    for idx in range(0,steps+1):
-        #resort to minimize distances in means of pairings
-        sorted(norm_params1, key=operator.itemgetter(0), reverse=False)
-                
-        subalpha = float(idx) * incr
-        
-        inter_means = []; inter_stdevs = []; inter_comp_ratios = []
-        
-        max_comps = len(norm_params1)
-        
-        if max_comps < len(norm_params2):
-            max_comps = len(norm_params2)
-        
-        # interpolate each gaussian
-        for idx in range(0,max_comps):
-            cur_mean1 = norm_params1[idx][0]
-            cur_std1 = norm_params1[idx][1]
-            cur_ratio1 = norm_params1[idx][2]
-        
-            cur_mean2 = norm_params2[idx][0]
-            cur_std2 = norm_params2[idx][1]
-            cur_ratio2 = norm_params2[idx][2]
-            
-            inter_means.append(cur_mean1*(1.0-subalpha) + cur_mean2*subalpha)
-            inter_stdevs.append(cur_std1*(1.0-subalpha) + cur_std2*subalpha)
-            inter_comp_ratios.append(cur_ratio1*(1.0-subalpha) + cur_ratio2*subalpha)
-            
-        norm_params1 = []
-        for j in range(len(inter_means)):    
-            norm_params1.append([inter_means[j], inter_stdevs[j], inter_comp_ratios[j]])
-    '''
-    
-    #return interp GMM params
-    return interpolant_params
-
 def kl_div_1D(A,B,min_x=-5, max_x=5):
     "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
     D = .0
@@ -1010,27 +1109,6 @@ def kl_div_1D(A,B,min_x=-5, max_x=5):
         else:
             D+= B(i)
         i += incr
-    return D 
-
-def kl_div_2D(A,B,min_x=-5, max_x=5):
-    "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
-    D = .0
-    #i = min_x
-    div = 1000j
-
-    # Regular grid to evaluate kde upon
-    u_vals = np.r_[min_x:max_x:div]
-    v_vals = np.r_[min_x:max_x:div]
-    
-    #incr = math.fabs(min_x - max_x) / div
-    for u in u_vals:
-        for v in v_vals:
-            if A(u,v) != .0:
-                #print A(i)
-                D += A(u,v) * math.log( A(u,v) / B(u,v) ) 
-                #print math.log( A(i) / B(i) )
-            else:
-                D +=  B(u,v)
     return D 
 
 if __name__ == "__main__":  
