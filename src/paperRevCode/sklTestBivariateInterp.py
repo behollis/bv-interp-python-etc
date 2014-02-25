@@ -22,6 +22,9 @@ from peakfinder import *
 from quantile_lerp import *
 import os
 
+import datetime
+dt = str(datetime.datetime.now()) + '__'
+
 
 q_prev_max_vel_x = 0.0
 q_prev_max_vel_y = 0.0
@@ -39,7 +42,7 @@ MEM = 600
 
 SEED_LEVEL = 0
 vclin = []
-cf_vclin = []
+
 
 reused_vel_quantile = 0
 
@@ -60,13 +63,13 @@ OUTPUT_DATA_DIR = '/home/behollis/thesis_data/data/outRev/pics/bv_interp/'
 #LEV = 16
 #MEM = 600 
 
-EM_MAX_ITR = 15
+EM_MAX_ITR = 5
 EM_MAX_RESTARTS = 1000
 DEPTH = -2.0
 INTEGRATION_DIR = 'b'
 THRESHOLD_PER = 0.9 #percentage that second greatest peak needs to be of the max peak
-NUM_GAUSSIANS = 3#2
-MAX_GMM_COMP = 3#NUM_GAUSSIANS 
+NUM_GAUSSIANS = 4#2
+MAX_GMM_COMP = 4#NUM_GAUSSIANS 
 
 
 #part_pos_e = []
@@ -82,11 +85,14 @@ SAMPLES = 600
 vclin_x = np.ndarray(shape=(SAMPLES,LAT,LON))
 vclin_y = np.ndarray(shape=(SAMPLES,LAT,LON))
 
+vclin_half = np.ndarray(shape=(SAMPLES,LAT/2 + 1,LON/2 + 1,2))
+vclin_half = np.ndarray(shape=(SAMPLES,LAT/2 + 1,LON/2 + 1,2))
+
 g_grid_params_array = []
 g_grid_kde_array = []
 g_grid_quantile_curves_array = []
 
-QUANTILES = 50
+QUANTILES = 100
 divs = 80
 div = complex(divs)
 div_real = divs
@@ -95,7 +101,7 @@ end = +22
 TOL = 0.05 #( 1.0 / QUANTILES ) / 3.0
 
 
-def lerpBivGMMPair(norm_params1, norm_params2, alpha, steps=1, num_gs=3):     
+def lerpBivGMMPair(norm_params1, norm_params2, alpha, steps=1, num_gs=MAX_GMM_COMP):     
     ''' handles equal number of constituent gaussians '''
     # pair based on gaussian contribution to gmm
     sorted(norm_params2, key=operator.itemgetter(2), reverse=False)
@@ -189,7 +195,7 @@ def getCoordParts(ppos=[0.0,0.0]):
     
     return ppos_parts 
 
-def getGridPoints(ppos=[0.0,0.0]):
+def getGridPoints(ppos=[0.0,0.0], half=False):
     #assume grid points are defined by integer indices
     
     ppos_parts = getCoordParts(ppos)
@@ -206,14 +212,20 @@ def getGridPoints(ppos=[0.0,0.0]):
     
     #find four corner grid point indices, numbered from gpt0 = (bottom, left) TO gpt3 = (top, right)
     #calculated from whole parts 
-    gpt0 = [ppos_parts[0][1], ppos_parts[1][1]]
-    gpt1 = [ppos_parts[0][1] + 1, ppos_parts[1][1]]
-    gpt2 = [ppos_parts[0][1], ppos_parts[1][1] + 1]
-    gpt3 = [ppos_parts[0][1] + 1, ppos_parts[1][1] + 1]
+    if half == False:
+        gpt0 = [ppos_parts[0][1], ppos_parts[1][1]]
+        gpt1 = [ppos_parts[0][1] + 1, ppos_parts[1][1]]
+        gpt2 = [ppos_parts[0][1], ppos_parts[1][1] + 1]
+        gpt3 = [ppos_parts[0][1] + 1, ppos_parts[1][1] + 1]
+    else:
+        gpt0 = [ppos_parts[0][1] / 2, ppos_parts[1][1] / 2]
+        gpt1 = [ppos_parts[0][1] / 2 + 1, ppos_parts[1][1] / 2]
+        gpt2 = [ppos_parts[0][1] / 2, ppos_parts[1][1] / 2 + 1]
+        gpt3 = [ppos_parts[0][1] / 2 + 1, ppos_parts[1][1] / 2 + 1]
     
     return gpt0, gpt1, gpt2, gpt3
 
-def getVclinSamples(gpt0, gpt1, gpt2, gpt3):
+def getVclinSamples(gpt0, gpt1, gpt2, gpt3, half=False):
     gpt0_dist = np.zeros(shape=(2,SAMPLES))
     gpt1_dist = np.zeros(shape=(2,SAMPLES))
     gpt2_dist = np.zeros(shape=(2,SAMPLES))
@@ -234,17 +246,32 @@ def getVclinSamples(gpt0, gpt1, gpt2, gpt3):
         gpt3_dist[1][idx] = vclin_y[idx][gpt3[0]][gpt3[1]]
         '''
         
-        gpt0_dist[0][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][0]
-        gpt0_dist[1][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][1]
+        if not half:
+            gpt0_dist[0][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][0]
+            gpt0_dist[1][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][1]
          
-        gpt1_dist[0][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][0]
-        gpt1_dist[1][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][1] 
-        
-        gpt2_dist[0][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][0]
-        gpt2_dist[1][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][1] 
-        
-        gpt3_dist[0][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][0]
-        gpt3_dist[1][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][1] 
+            gpt1_dist[0][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][0]
+            gpt1_dist[1][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][1] 
+            
+            gpt2_dist[0][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][0]
+            gpt2_dist[1][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][1] 
+            
+            gpt3_dist[0][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][0]
+            gpt3_dist[1][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][1] 
+        else:
+            gpt0_dist[0][idx] = vclin_half[idx][gpt0[0]][gpt0[1]][0]
+            gpt0_dist[1][idx] = vclin_half[idx][gpt0[0]][gpt0[1]][1]
+         
+            gpt1_dist[0][idx] = vclin_half[idx][gpt1[0]][gpt1[1]][0]
+            gpt1_dist[1][idx] = vclin_half[idx][gpt1[0]][gpt1[1]][1] 
+            
+            gpt2_dist[0][idx] = vclin_half[idx][gpt2[0]][gpt2[1]][0]
+            gpt2_dist[1][idx] = vclin_half[idx][gpt2[0]][gpt2[1]][1] 
+            
+            gpt3_dist[0][idx] = vclin_half[idx][gpt3[0]][gpt3[1]][0]
+            gpt3_dist[1][idx] = vclin_half[idx][gpt3[0]][gpt3[1]][1] 
+            
+            
    
     return gpt0_dist, gpt1_dist, gpt2_dist, gpt3_dist
 
@@ -268,7 +295,7 @@ def bivariate_normal(X, Y, sigmax=1.0, sigmay=1.0,
     return np.exp(-z / (2 * (1 - rho ** 2))) / denom
 '''
 
-def plotKDE(kde,distro,title):
+def plotKDE(kde,distro,title, co = 'green'):
     div = 200j
     div_real = 200
     
@@ -290,7 +317,7 @@ def plotKDE(kde,distro,title):
     AX.set_ylim(y_flat.min(), y_flat.max())
     AX.set_zlabel('density')
     AX.set_zlim(0, z.max())
-    AX.plot_surface(x, y, z, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=1.0, color='green')
+    AX.plot_surface(x, y, z, rstride=2, cstride=2, linewidth=0.1, antialiased=True, alpha=1.0, color=co)
     plt.savefig(OUTPUT_DATA_DIR + title + ".jpg")
     #plt.show() 
   
@@ -708,14 +735,14 @@ def interpVelFromEnsemble(ppos=[0.0,0.0]):
         print "kde not working"
         return None
   
-def interpFromGMM(ppos=[0.0,0.0], ignore_cache = 'False'):
+def interpFromGMM(ppos=[0.0,0.0], ignore_cache = 'False', half=False):
     
     ppos_parts = getCoordParts(ppos)
     
     #find grid cell that contains position to be interpolated
-    gp0, gp1, gp2, gp3 = getGridPoints(ppos)
+    gp0, gp1, gp2, gp3 = getGridPoints(ppos, half)
     
-    gp0_dist, gp1_dist, gp2_dist, gp3_dist = getVclinSamples(gp0, gp1, gp2, gp3)
+    gp0_dist, gp1_dist, gp2_dist, gp3_dist = getVclinSamples(gp0, gp1, gp2, gp3, half)
     
     global g_grid_params_array 
     
@@ -864,13 +891,15 @@ def main():
     
     global NUM_GAUSSIANS, MAX_GMM_COMP, EM_MAX_ITR
       
-    NUM_GAUSSIANS = 2
-    MAX_GMM_COMP = 2
-    EM_MAX_ITR = 5
+    NUM_GAUSSIANS = 4
+    MAX_GMM_COMP = 4
+    EM_MAX_ITR = 30
     
-    r.library('mixtools')
+    #r.library('mixtools')
     loadNetCdfData()
-    createGlobalParametersArray(LAT,LON)
+    remapGridData()
+    
+    #createGlobalParametersArray(LAT,LON)
     createGlobalKDEArray(LAT,LON)
     createGlobalQuantileArray(LAT,LON)
     
@@ -881,18 +910,26 @@ def main():
     
     #python -m cProfile -o outputfile.profile nameofyour_program alpha
     
-    ppos = [44.0,31.0]
+    ppos = [44.0,30.0]
    
+    kdes = []
+    
+    ''' http://www.tayloredmktg.com/rgb/#PA '''
+    green = '#98fb98'
+    blue = '#87ceeb'
+    red = '#f08080'
+    purple = '#ee82ee'
       
-    for idx in range(0,3):#,11):
+    for idx in range(0,3):
         ypos = ppos[1] + idx 
         
         print idx
         
         #find KDE benchmark
         distro = getVclinSamplesSingle([ppos[0],ypos])
-        kde = stats.kde.gaussian_kde(distro)
+        kdes.append(distro)
         
+        kde = stats.kde.gaussian_kde(distro)
         
         x_min = np.asarray(distro[0]).min()
         x_max = np.asarray(distro[0]).max()
@@ -901,50 +938,109 @@ def main():
         
         mfunc1 = getKDE((x_min,x_max), (y_min,y_max),kde)
         
-        #find single gaussian approx
+        '''
+        #find GMM approx
+        lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True', half=True)
+        bivGMM = getBivariateGMM((x_min,x_max), (y_min,y_max), params = lerp_params)
+        '''
+        
+        #find quantile approx (include surface interpolant choice)
+        samples_arr, evalfunc = interpFromQuantiles3(ppos=[ppos[0],ypos], ignore_cache = 'True', half=True)
+        distro2, interpType = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], (x_min,x_max), (y_min,y_max))
+        
+        skl1 = kl_div_2D_M(mfunc1, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+        
+        '''
+        skl3f = kl_div_2D_M(mfunc1=bivGMM, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+        skl3b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=bivGMM, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+        skl3 = skl3f + skl3b
+        '''
+        
+        skl4f = kl_div_2D_M(mfunc1=distro2, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+        skl4b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+        skl4 = skl4f + skl4b
+        
+        title1 = dt + str(ppos[0]) + '_' + str(ypos) + '_kde_' + str(skl1)
+        #title3 = str(ppos[0]) + '_' + str(ypos) + '_gmm_' + str(skl3)
+        title4 = dt + str(ppos[0]) + '_' + str(ypos) + '_q_'   + str(skl4)
+         
+        plotKDE(kde,distro, title1, co = green)
+        
+        #plotDistro((x_min,x_max), (y_min,y_max), title3, params = lerp_params,color=red)
+        plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr, col=blue)
+        
+        if ypos == 31.0:
+            '''
+            lerp_params_actual = interpFromGMM([ppos[0],ypos], ignore_cache = 'True', half=False)
+            bivGMM_actual = getBivariateGMM((x_min,x_max), (y_min,y_max), params = lerp_params_actual)
+            
+            skl3f_a = kl_div_2D_M(mfunc1=bivGMM_actual, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl3b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=bivGMM_actual, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl3_a = skl3f_a + skl3b_a
+            
+            title3_a = str(ppos[0]) + '_' + str(ypos) + '_gmm_not_interpolated_' + str(skl3_a)
+            plotDistro((x_min,x_max), (y_min,y_max), title3_a, params = lerp_params_actual, color=red)
+            '''
+            
+            #find quantile approx (include surface interpolant choice)
+            samples_arr_a, evalfunc_a = interpFromQuantiles3(ppos=[ppos[0],ypos], ignore_cache = 'True', half=False)
+            distro2_a, interpType_a = computeDistroFunction(evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], \
+                                                             (x_min,x_max), (y_min,y_max))
+            
+            skl4f_a = kl_div_2D_M(mfunc1=distro2_a, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl4b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2_a, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl4_a = skl4f_a + skl4b_a
+            
+            title4_a = dt + str(ppos[0]) + '_' + str(ypos) + '_q_not_interpolated_'   + str(skl4_a)
+            plotXYZSurf((x_min,x_max), (y_min,y_max), distro2_a, title4_a, samples_arr_a, col=blue)
+            
+    #find single gaussian approx
+'''
+    idx = 0
+    for distro in kdes:
         mu_uv = np.mean(distro, axis=1)
         var_uv = np.var(distro, axis=1)
         cov = np.zeros(shape=(2,2)); cov[0,0] = var_uv[1]; cov[1,1] = var_uv[0]
         mean_params = [[(mu_uv[1], mu_uv[0]), cov, 1.0]]
         bivG = getBivariateGMM((x_min,x_max), (y_min,y_max), params = mean_params)
         
-        #find GMM approx
-        lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True')
-        bivGMM = getBivariateGMM((x_min,x_max), (y_min,y_max), params = lerp_params)
-        
-        #find quantile approx (include surface interpolant choice)
-        samples_arr, evalfunc = interpFromQuantiles3(ppos=[ppos[0],ypos])
-        distro2, interpType = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], (x_min,x_max), (y_min,y_max))
-        
-        skl1 = kl_div_2D_M(mfunc1, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        
         skl2f = kl_div_2D_M(mfunc1, bivG, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
         skl2b = kl_div_2D_M(bivG, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
         skl2 = skl2f + skl2b
         
-        skl3f = kl_div_2D_M(mfunc1=bivGMM, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl3b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=bivGMM, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl3 = skl3f + skl3b
+        title2 = str(ppos[0]) + '_' + str(ypos) + '_g_'   + str(skl2)
         
-        skl4f = kl_div_2D_M(mfunc1=distro2, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl4b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl4 = skl4f + skl4b
+        plotDistro((x_min,x_max), (y_min,y_max), title2, params = mean_params,color=purple)
         
-        title1 = str(ppos[0]) + '_' + str(ypos) + '_kde_' + str(skl1)
-        title2 = str(ppos[0]) + '_' + str(ypos) + '_g_' + str(skl2)
-        title3 = str(ppos[0]) + '_' + str(ypos) + '_gmm_' + str(skl3)
-        title4 = str(ppos[0]) + '_' + str(ypos) + '_q_' + str(skl4)
-         
-        plotKDE(kde,distro, title1)
-        plotDistro((x_min,x_max), (y_min,y_max), title2, params = mean_params,color='purple')
-        plotDistro((x_min,x_max), (y_min,y_max), title3, params = lerp_params,color='red')
-        plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr) #plots quantile lerp
-        #plotXYZScatter(evalfunc[0],evalfunc[1],evalfunc[2],'',samples_arr)
+        if idx == 1:
+            mu_uv0 = np.mean(distro[0], axis=1)
+            var_uv0 = np.var(distro[0], axis=1)
+            cov0 = np.zeros(shape=(2,2)); cov0[0,0] = var_uv0[1]; cov0[1,1] = var_uv0[0]
+            
+            mu_uv1 = np.mean(distro[2], axis=1)
+            var_uv1 = np.var(distro[2], axis=1)
+            cov1 = np.zeros(shape=(2,2)); cov1[0,0] = var_uv1[1]; cov1[1,1] = var_uv1[0]
+            
+            mu_uv_i = 0.5*mu_uv0 + 0.5*mu_uv1
+            var_uv_i = 0.5*var_uv0 + 0.5*var_uv1
+            cov_i = np.zeros(shape=(2,2)); cov_i[0,0] = var_uv_i[1]; cov_i[1,1] = var_uv_i[0]
+            
+            mean_params = [[(mu_uv_i[1], mu_uv_i[0]), cov_i, 1.0]]
+            bivG = getBivariateGMM((x_min,x_max), (y_min,y_max), params = mean_params)
+            
+            skl2f = kl_div_2D_M(mfunc1, bivG, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl2b = kl_div_2D_M(bivG, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
+            skl2 = skl2f + skl2b
+            
+            title2 = str(ppos[0]) + '_' + str(ypos) + '_g_interpolated_'   + str(skl2)
+            
+            plotDistro((x_min,x_max), (y_min,y_max), title2, params = mean_params,color=purple)
         
+        idx += 1
         
-       
-        #plotDistro( (x_min,x_max), (y_min,y_max), title3, params = mean_params,color='purple' ) 
-      
+'''
+            
+             
 '''  
         for g in range(2,11):
             NUM_GAUSSIANS = g
@@ -955,6 +1051,7 @@ def main():
                 lerp_params = interpFromGMM([ppos[0],ypos], ignore_cache = 'True')#float(float(idx)/10.)])
                 plotDistro( (x_min,x_max), (y_min,y_max), title1, params = lerp_params,color='red' )
 '''
+            
 
 def kl_div_2D_M(mfunc1,mfunc2,min_x=-5, max_x=5, min_y=-5, max_y=5):
     "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
@@ -962,7 +1059,7 @@ def kl_div_2D_M(mfunc1,mfunc2,min_x=-5, max_x=5, min_y=-5, max_y=5):
     #i = min_x
     div = 10j
 
-    # Regular grid to evaluate kde upon
+    # Regular grid to evaluate upon
     u_vals = np.r_[min_x:max_x:div]
     v_vals = np.r_[min_y:max_y:div]
     
@@ -972,11 +1069,8 @@ def kl_div_2D_M(mfunc1,mfunc2,min_x=-5, max_x=5, min_y=-5, max_y=5):
             if mfunc2[u,v] != .0 and mfunc1[u,v] != .0:
                 #print A(i)
                 D += mfunc1[u,v] * math.log( mfunc1[u,v] / mfunc2[u,v] ) 
-                #print u
-                #print v
-                #print mfunc[u,v] * math.log( mfunc[u,v] / kde([u,v])[0] )
-            else:
-                D +=  mfunc1[u,v]
+            #else:
+            #    D +=  mfunc1[u,v]
     return D 
 '''
 #this impl can't be correct unless there is coversion between indices and u,v coords for both kde / mfunc
@@ -1020,6 +1114,39 @@ def getVclinSamplesSingle(gpt):
    
     return gpt0_dist
 
+#store in a subsampled array that can be accessed
+#with existing interpolation code
+def remapGridData():
+    for idx in range(0,MEM):
+        for lat in range(0,LAT):
+            for lon in range(0,LON):
+                if lat % 2 != 0 or lon % 2 != 0:
+                    #print 'removed lat / lon values:'
+                    #print lat
+                    #print lon
+                    continue
+                
+                mlat = 0; mlon = 0
+                
+                if lat == 0:
+                    mlat = 0
+                else:
+                    mlat = pm.floor(lat / 2)
+                    
+                if lon == 0:
+                    mlon = 0
+                else:
+                    mlon = pm.floor(lon / 2)
+                    
+                #print mlon
+                #print mlat
+                
+                vclin_half[idx][mlat][mlon][0] = vclin[idx][lat][lon][SEED_LEVEL][0]
+                vclin_half[idx][mlat][mlon][1] = vclin[idx][lat][lon][SEED_LEVEL][1]
+                
+                #print vclin_half[idx][mlat][mlon][0]
+                #print vclin_half[idx][mlat][mlon][1]
+        
 def loadNetCdfData():
     global vclin
     
@@ -1037,7 +1164,8 @@ def loadNetCdfData():
     #deviations from central forecast for all 600 realizations
     vclin = rreader.readVarArray('vclin')  
     vclin = addCentralForecast(vclin, vclin8, level_start=SEED_LEVEL, level_end=SEED_LEVEL)  
-
+    
+        
 import rpy2.robjects.numpy2ri as rpyn
 #vector=rpyn.ri2numpy(vector_R)
 
@@ -1140,8 +1268,6 @@ def findBivariateQuantilesSinglePass(kde,arr):
     
     global QUANTILES, divs, TOL
     
-    
-    
     u_min = arr.T[:,0].min()
     u_max = arr.T[:,0].max()
     v_min = arr.T[:,1].min()
@@ -1191,7 +1317,7 @@ def findBivariateQuantilesSinglePass(kde,arr):
         cd = 0.0
         
         for y in y_div:
-            print y
+            #print y
             low_bounds = (start,start)
             high_bounds = (x+incr_x,y+incr_y)
             
@@ -1221,9 +1347,9 @@ def findBivariateQuantilesSinglePass(kde,arr):
             
     return x_pos, y_pos, z_pos, qcurvex, qcurvey
 
-MID_RANGE_QUANTILE_CURVE_POINTS = 80
+MID_RANGE_QUANTILE_CURVE_POINTS = 100
 
-def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, arr):
+def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, arr, use_cache=False):
     global g_grid_quantile_curves_array, QUANTILES, MID_RANGE_QUANTILE_CURVE_POINTS
 
     degree = 3;smoothing = None
@@ -1235,7 +1361,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex0 = gp0_qcurve[0]
     qcurvey0 = gp0_qcurve[1]
     spline_curve0 = gp0_qcurve[2]
-    if len(gp0_qcurve[0]) == 0:
+    if len(gp0_qcurve[0]) == 0 or use_cache == False:
         print 'computing quantile curves gp0...'
         x_pos0, y_pos0, z_pos0, qcurvex0, qcurvey0 = findBivariateQuantilesSinglePass(gp0,arr[0])
         #plotXYZScatterQuants(qcurvex0, qcurvey0, title='qcurve0')
@@ -1256,7 +1382,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex1 = gp1_qcurve[0]
     qcurvey1 = gp1_qcurve[1]
     spline_curve1 = gp1_qcurve[2]
-    if len(gp1_qcurve[0]) == 0:
+    if len(gp1_qcurve[0]) == 0 or use_cache == False:
         print 'computing quantile curves gp1...'
         x_pos1, y_pos1, z_pos1, qcurvex1, qcurvey1 = findBivariateQuantilesSinglePass(gp1,arr[1])
         #plotXYZScatterQuants(qcurvex1, qcurvey1, title='qcurve1')
@@ -1277,7 +1403,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex2 = gp2_qcurve[0]
     qcurvey2 = gp2_qcurve[1]
     spline_curve2 = gp2_qcurve[2]
-    if len(gp2_qcurve[0]) == 0:
+    if len(gp2_qcurve[0]) == 0 or use_cache == False:
         print 'computing quantile curves gp2...'
         x_pos2, y_pos2, z_pos2, qcurvex2, qcurvey2 = findBivariateQuantilesSinglePass(gp2,arr[2])
         #plotXYZScatterQuants(qcurvex2, qcurvey2, title='qcurve2')
@@ -1298,7 +1424,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex3 = gp3_qcurve[0]
     qcurvey3 = gp3_qcurve[1]
     spline_curve3 = gp3_qcurve[2]
-    if len(gp3_qcurve[0]) == 0:
+    if len(gp3_qcurve[0]) == 0 or use_cache == False:
         print 'computing quantile curves gp3...'
         x_pos3, y_pos3, z_pos3, qcurvex3, qcurvey3 = findBivariateQuantilesSinglePass(gp3, arr[3])
         #plotXYZScatterQuants(qcurvex3, qcurvey3, title='qcurve3')
@@ -1360,6 +1486,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
             dir_vec0 = np.asarray([cur_x1, cur_y1]) - np.asarray([cur_x0, cur_y0])
             dir_vec1 = np.asarray([cur_x3, cur_y3]) - np.asarray([cur_x2, cur_y2])
             
+            '''
             dist0 = np.sqrt(np.dot(dir_vec0, dir_vec0))
             dist1 = np.sqrt(np.dot(dir_vec1, dir_vec1))
             
@@ -1380,9 +1507,15 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
             
             interpolant_xy0 = np.asarray([cur_x0,cur_y0]) + alpha_x * dist0 * dir_vec_n0
             interpolant_xy1 = np.asarray([cur_x2,cur_y2]) + alpha_x * dist1 * dir_vec_n1
+            '''
+            
+            interpolant_xy0 = np.asarray([cur_x0,cur_y0]) + alpha_x * dir_vec0
+            interpolant_xy1 = np.asarray([cur_x2,cur_y2]) + alpha_x * dir_vec1
             
             dir_vec_bar = np.asarray([interpolant_xy1[0],interpolant_xy1[1]]) - \
                 np.asarray([interpolant_xy0[0],interpolant_xy0[1]])
+                
+            '''
             dist_bar = np.sqrt(np.dot(dir_vec_bar, dir_vec_bar))
             
             dir_vec_bar_n = None
@@ -1393,13 +1526,18 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
                 dist_bar = 0.
                 dir_vec_bar_n = np.asarray([0.,0.])
             
-            interpolant_xy_bar = np.asarray([interpolant_xy0[0],interpolant_xy0[1]]) + alpha_y * dist_bar * dir_vec_bar_n
+            interpolant_xy_bar = np.asarray([interpolant_xy0[0],interpolant_xy0[1]]) + \
+                alpha_y * dist_bar * dir_vec_bar_n
+            '''
+            
+            interpolant_xy_bar = np.asarray([interpolant_xy0[0],interpolant_xy0[1]]) + alpha_y * dir_vec_bar
             
             z = bilinearBivarQuantLerp(gp0, gp1, gp2, gp3, cur_x0, cur_y0, \
                                         cur_x1, cur_y1, cur_x2, cur_y2, cur_x3, cur_y3, \
                                          alpha_x, alpha_y)
             
             if z < 0. or math.isnan(z) or math.isinf(z):
+                print 'WARNING: interpolated pdf has NaN, inf or negative result...skipping data point.'
                 continue
            
             x_pos.append(interpolant_xy_bar[0])
@@ -1410,7 +1548,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     print 'finished lerping all quantile curve for interpolant distro...'
     return x_pos, y_pos, z_pos
 
-def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0):
+def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0, ignore_cache = 'False', half=False):
     
     print ppos
     
@@ -1419,21 +1557,21 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0):
     ppos_parts = getCoordParts(ppos)
     
     #find grid cell that contains position to be interpolated
-    gpt0, gpt1, gpt2, gpt3 = getGridPoints(ppos)
+    gpt0, gpt1, gpt2, gpt3 = getGridPoints(ppos, half)
     
     #gpt0_samp=None; gpt1_samp=None; gpt2_samp=None; gpt3_samp=None
     
     #only need to collect samples if we haven't already calculated kde's for grid cell
     #if g_grid_kde_array[int(gpt0[0])][int(gpt0[1])] is None and g_grid_kde_array[int(gpt1[0])][int(gpt1[1])] is None \
     #    and g_grid_kde_array[int(gpt2[0])][int(gpt2[1])] is None and g_grid_kde_array[int(gpt3[0])][int(gpt3[1])] is None:
-    gpt0_samp, gpt1_samp, gpt2_samp, gpt3_samp = getVclinSamples(gpt0, gpt1, gpt2, gpt3)
+    gpt0_samp, gpt1_samp, gpt2_samp, gpt3_samp = getVclinSamples(gpt0, gpt1, gpt2, gpt3, half)
     
     samples_arr = [gpt0_samp, gpt1_samp, gpt2_samp, gpt3_samp]
     
     i = int(gpt0[0])
     j = int(gpt0[1])
     gp0_kde = g_grid_kde_array[i][j]
-    if gp0_kde is None:
+    if gp0_kde is None or ignore_cache == 'True':
         try:
             gp0_kde = stats.kde.gaussian_kde( ( gpt0_samp[0][:], gpt0_samp[1][:] ) )
         except:
@@ -1445,7 +1583,7 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0):
     i = int(gpt1[0])
     j = int(gpt1[1])
     gp1_kde = g_grid_kde_array[i][j]
-    if gp1_kde is None:
+    if gp1_kde is None or ignore_cache == 'True':
         try:
             gp1_kde = stats.kde.gaussian_kde( ( gpt1_samp[0][:], gpt1_samp[1][:] ) )
         
@@ -1458,7 +1596,7 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0):
     i = int(gpt2[0])
     j = int(gpt2[1])
     gp2_kde = g_grid_kde_array[i][j]
-    if gp2_kde is None:
+    if gp2_kde is None or ignore_cache == 'True':
         try:
             gp2_kde = stats.kde.gaussian_kde( ( gpt2_samp[0][:], gpt2_samp[1][:] ) )
         except:
@@ -1470,7 +1608,7 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0):
     i = int(gpt3[0])
     j = int(gpt3[1])
     gp3_kde = g_grid_kde_array[i][j]
-    if gp3_kde is None:
+    if gp3_kde is None or ignore_cache == 'True':
         try:
             gp3_kde = stats.kde.gaussian_kde( ( gpt3_samp[0][:], gpt3_samp[1][:] ) )
         except:
@@ -1480,8 +1618,14 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0):
         g_grid_kde_array[i][j] = gp3_kde
 
     #interp dist for x dim  
-    alpha_x = ppos_parts[0][0]
-    alpha_y = ppos_parts[1][0]
+    alpha_x = 0.
+    alpha_y = 0.
+    if half == False:
+        alpha_x = ppos_parts[0][0]
+        alpha_y = ppos_parts[1][0]
+    else:
+        alpha_x = pm.modf(ppos_parts[0][1] / 2)[0]
+        alpha_y = pm.modf(ppos_parts[1][1] / 2)[0]
     
     x3, y3, z3 = lerpBivariate3(gp0_kde, gp1_kde, gp2_kde, gp3_kde,\
                                             alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, samples_arr)
@@ -1513,13 +1657,13 @@ def computeDistroFunction(x_pos,y_pos,z_pos, mmx, mmy):
             distro_eval = interpolate.griddata(points=pts, values=np.asarray(z_pos), \
                                                xi=(X,Y), method='linear', fill_value=0.0)
             success = True
-            interp_type = 'linear'
+            interp_type = 'cubic'
         except:
             try:
                 distro_eval = interpolate.griddata(points=pts, values=np.asarray(z_pos), \
                                                xi=(X,Y), method='cubic', fill_value=0.0)
                 success = True
-                interp_type = 'cublic'
+                interp_type = 'linear'
             except:
                 continue
     
@@ -1568,7 +1712,7 @@ def plotXYZScatter(x_pos,y_pos,z_pos, title = '', arr=[]):
     #plt.savefig(OUTPUT_DATA_DIR + str(title) + "scatter.png")
     plt.show()
     
-def plotXYZSurf(mmx, mmy, surface, title = '', arr=[]):
+def plotXYZSurf(mmx, mmy, surface, title = '', arr=[], col='0.75'):
     
     #plotXYZSurf((x_min,x_max), (y_min,y_max), distro2,'', samples_arr)
     
@@ -1588,8 +1732,8 @@ def plotXYZSurf(mmx, mmy, surface, title = '', arr=[]):
     AX.set_ylim(y_flat.min(), y_flat.max())
     AX.set_zlabel('density')
     AX.set_zlim(0, surface.max())
-    AX.plot_surface(X, Y, surface, rstride=1, cstride=1, alpha=1.0, \
-                    linewidth=0.1, antialiased=True, color='blue')
+    AX.plot_surface(X, Y, surface, rstride=2, cstride=2, alpha=1.0, \
+                    linewidth=0.1, antialiased=True, color=col)
     
     plt.savefig(OUTPUT_DATA_DIR + str(title) + ".jpg")
     #plt.show() 
