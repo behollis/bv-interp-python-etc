@@ -22,7 +22,7 @@ import datetime
 import time
 from sklTestBivariateInterp import *
 
-
+OUTPUT_DATA_DIR = '/home/behollis/thesis_data/data/outRev/pics/bv_interp/'
 
 def main():
     
@@ -38,83 +38,125 @@ def main():
     startlat = 0; endlat = LAT
     startlon = 0; endlon = LON
     
-    sklgrid = np.zeros(shape=(endlat-startlat+1,endlon-startlon+1))
-      
-    for ilat in range(startlat,endlat,1):
-        for ilon in range(startlon,endlon,1):
-        
-            #find KDE benchmark
-            distro = getVclinSamplesSingle([ilat,ilon])
-            
-            skl = 0.
-            kde = None
-            
-            try:
-                kde = stats.kde.gaussian_kde(distro)
-                 
-                x_min = np.asarray(distro[0]).min()
-                x_max = np.asarray(distro[0]).max()
-                y_min = np.asarray(distro[1]).min()
-                y_max = np.asarray(distro[1]).max()
-                
-                mfunc1 = getKDE((x_min,x_max), (y_min,y_max),kde)
-                
-                if ilat % 2 == 0. and ilon % 2 == 0.:
-                    #find quantile approx (include surface interpolant choice)
-                    
-                    samples_arr_a, evalfunc_a = interpFromQuantiles3(ppos=[ilat,ilon], ignore_cache = 'True', half=False)
-                    
-                    if evalfunc_a == None:
-                        continue
-                    
-                    distro2_a, interpType_a, success = computeDistroFunction(evalfunc_a[0],evalfunc_a[1], \
-                                                                             evalfunc_a[2], (x_min,x_max), (y_min,y_max))
-                    
-                    if not success:
-                        continue
-                    
-                    skl4f_a = kl_div_2D_M(mfunc1=distro2_a, mfunc2=mfunc1, min_x=x_min, max_x=x_max, \
-                                          min_y=y_min, max_y=y_max)
-                    skl4b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2_a, min_x=x_min, max_x=x_max, \
-                                          min_y=y_min, max_y=y_max)
-                    skl = skl4f_a + skl4b_a
-                else:
-                    
-                    samples_arr, evalfunc = interpFromQuantiles3(ppos=[ilat,ilon], ignore_cache = 'True', half=True)
-                    
-                    if evalfunc_a == None:
-                        continue
-                    
-                    distro2, interpType = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
-                                                                (x_min,x_max), (y_min,y_max))
-                    
-                    if not success:
-                        continue
-                    
-                    skl4f = kl_div_2D_M(mfunc1=distro2, mfunc2=mfunc1, min_x=x_min, max_x=x_max, \
-                                        min_y=y_min, max_y=y_max)
-                    skl4b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2, min_x=x_min, max_x=x_max, \
-                                        min_y=y_min, max_y=y_max)
-                    skl = skl4f + skl4b
-                    
-            except:
-                print 'lat: ' + str(ilat)
-                print 'lon: ' + str(ilon)
-                print 'EXCEPTION!'
-                
-            sklgrid[ilat-startlat,ilon-startlon] = skl
-            print 'lat: ' + str(ilat)
-            print 'lon: ' + str(ilon)
-            print 'skl: ' + str(skl)
-                    
-    #cpu time
-    qend = time.clock()
-    qtot = qend - qstart
+    oslat = startlat
+    oslon = startlon
     
-    fig = plt.figure()
-    #plt.imshow(sklgrid)
-    plt.show()
-    plt.savefig(OUTPUT_DATA_DIR + str(startlat) + '_' + str(endlat) + '_skl_cputime_' + str(qtot) + '.jpg')
+    BLOCK_SIZE = 2
+    
+    #5x5 blocks
+    sklgrid = np.zeros(shape=(BLOCK_SIZE,BLOCK_SIZE))
+    
+    gclock = time.clock()
+    
+    for oslat in range(0, LAT-BLOCK_SIZE, BLOCK_SIZE):
+        for oslon in range(0, LON-BLOCK_SIZE, BLOCK_SIZE):
+            #calculate skl for block 
+            for ilat in range(oslat,BLOCK_SIZE+oslat,1):
+                for ilon in range(oslon,BLOCK_SIZE+oslon,1):
+                    
+                    qcurr = time.clock()
+                    print 'time elapsed: ' + str(qcurr - qstart)
+                   
+                    #find KDE benchmark
+                    distro = getVclinSamplesSingle([ilat,ilon])
+                    
+                    skl = 0.
+                    kde = None
+                    
+                    try:
+                        kde = stats.kde.gaussian_kde(distro)
+                         
+                        x_min = np.asarray(distro[0]).min()
+                        x_max = np.asarray(distro[0]).max()
+                        y_min = np.asarray(distro[1]).min()
+                        y_max = np.asarray(distro[1]).max()
+                        
+                        mfunc1 = getKDE((x_min,x_max), (y_min,y_max),kde)
+                        
+                        if ilat % 2 == 0. and ilon % 2 == 0.:
+                            #find quantile approx (include surface interpolant choice)
+                            
+                            samples_arr_a, evalfunc_a = interpFromQuantiles3(ppos=[ilat,ilon], \
+                                                                             ignore_cache = 'False', half=False)
+                            
+                            if evalfunc_a == None:
+                                print 'lat: ' + str(ilat)
+                                print 'lon: ' + str(ilon)
+                                print 'interpFromQuantile Failed...writing zero.'
+                                continue
+                            
+                            distro2_a, interpType_a, success = computeDistroFunction(evalfunc_a[0],evalfunc_a[1], \
+                                                                                     evalfunc_a[2], \
+                                                                                     (x_min,x_max), (y_min,y_max))
+                            
+                            if not success:
+                                print 'lat: ' + str(ilat)
+                                print 'lon: ' + str(ilon)
+                                print 'computeDistro Failed...writing zero.'
+                                continue
+                            
+                            skl4f_a = kl_div_2D_M(mfunc1=distro2_a, mfunc2=mfunc1, min_x=x_min, max_x=x_max, \
+                                                  min_y=y_min, max_y=y_max)
+                            skl4b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2_a, min_x=x_min, max_x=x_max, \
+                                                  min_y=y_min, max_y=y_max)
+                            skl = skl4f_a + skl4b_a
+                        else:
+                            
+                            samples_arr, evalfunc = interpFromQuantiles3(ppos=[ilat,ilon], \
+                                                                         ignore_cache = 'True', half=True)
+                            
+                            if evalfunc_a == None:
+                                print 'lat: ' + str(ilat)
+                                print 'lon: ' + str(ilon)
+                                print 'interpFromQuantile Failed...writing zero.'
+                                continue
+                            
+                            distro2, interpType = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
+                                                                        (x_min,x_max), (y_min,y_max))
+                            
+                            if not success:
+                                print 'lat: ' + str(ilat)
+                                print 'lon: ' + str(ilon)
+                                print 'computeDistro Failed...writing zero.'
+                                continue
+                            
+                            skl4f = kl_div_2D_M(mfunc1=distro2, mfunc2=mfunc1, min_x=x_min, max_x=x_max, \
+                                                min_y=y_min, max_y=y_max)
+                            skl4b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2, min_x=x_min, max_x=x_max, \
+                                                min_y=y_min, max_y=y_max)
+                            skl = skl4f + skl4b
+                            
+                    except:
+                        print 'lat: ' + str(ilat)
+                        print 'lon: ' + str(ilon)
+                        print 'Gathering samples for grid point failed...writing zero.'
+                        
+                        
+                    print 'lat: ' + str(ilat)
+                    print 'lon: ' + str(ilon)
+                    print 'skl: ' + str(skl)
+                    
+                    sklgrid[ilat-oslat,ilon-oslon] = skl
+             
+            ''' Finished calculating skl for current block. Now write to disk. '''        
+            #print 'lat: ' + str(ilat)
+            #print 'lon: ' + str(ilon)
+            #print 'skl: ' + str(skl)
+                    
+            #cpu time
+            qend = time.clock()
+            qtot = qend - gclock
+            
+            #write current block to disk
+            print 'writing current block'
+            np.save(OUTPUT_DATA_DIR + str(oslat) + '_' + str(oslon) + '_blocksize_' + str(BLOCK_SIZE) + \
+                    '_cputime_' + str(qtot), sklgrid)
+            
+            #reset 
+            gclock = time.clock()
+            sklgrid = np.zeros(shape=(BLOCK_SIZE,BLOCK_SIZE))
+    
+    print 'COMPLETE!'
             
 if __name__ == "__main__":  
     main()
