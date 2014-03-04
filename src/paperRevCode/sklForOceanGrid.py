@@ -48,7 +48,7 @@ def main():
     
     gclock = time.clock()
     
-    for oslat in range(0, LAT-BLOCK_SIZE, BLOCK_SIZE):
+    for oslat in range(6, LAT-BLOCK_SIZE, BLOCK_SIZE):
         for oslon in range(0, LON-BLOCK_SIZE, BLOCK_SIZE):
             #calculate skl for block 
             for ilat in range(oslat,BLOCK_SIZE+oslat,1):
