@@ -23,7 +23,7 @@ from quantile_lerp import *
 import os
 
 import datetime 
-dt = str(datetime.datetime.now()) + '__'
+dt = 'stampeMicroSec_' + str(datetime.datetime.now().microsecond) + '_' 
 
 import time
 
@@ -299,14 +299,16 @@ def bivariate_normal(X, Y, sigmax=1.0, sigmay=1.0,
     return np.exp(-z / (2 * (1 - rho ** 2))) / denom
 '''
 
-def plotKDE(kde,distro,title, co = 'green'):
+def plotKDE(kde,distro, mx = (0,0), my = (0, 0), title = '', co = 'green'):
     
     global DIV, DIVR
     
     FIG = plt.figure()
-    
-    x_flat = np.r_[np.asarray(distro[0]).min():np.asarray(distro[0]).max():DIV]
-    y_flat = np.r_[np.asarray(distro[1]).min():np.asarray(distro[1]).max():DIV]
+
+    #x_flat = np.r_['''np.asarray(distro[0]).min()'''mx[0]:'''np.asarray(distro[0]).max()'''mx[1]:DIV]
+    #y_flat = np.r_['''np.asarray(distro[1]).min()'''my[0]:'''np.asarray(distro[1]).max()'''my[1]:DIV]
+    x_flat = np.r_[mx[0]:mx[1]:DIV]
+    y_flat = np.r_[my[0]:my[1]:DIV]
     x,y = np.meshgrid(x_flat,y_flat)
     
     grid_coords = np.append(x.reshape(-1,1),y.reshape(-1,1),axis=1)
@@ -887,6 +889,11 @@ def interpFromGMM(ppos=[0.0,0.0], ignore_cache = 'False', half=False):
     pars = True
 
     return lerp_params
+
+green = '#98fb98'
+blue = '#87ceeb'
+red = '#f08080'
+purple = '#ee82ee'
     
 def main():
     #gen_streamlines = str(sys.argv[1])
@@ -912,7 +919,7 @@ def main():
     
     #python -m cProfile -o outputfile.profile nameofyour_program alpha
     
-    ppos = [44.0,30.0]
+    ppos = [0,37.0]
    
     kdes = []
     
@@ -926,19 +933,6 @@ def main():
         ypos = ppos[1] + idx 
         
         print idx
-        
-        #find KDE benchmark
-        distro = getVclinSamplesSingle([ppos[0],ypos])
-        kdes.append(distro)
-        
-        kde = stats.kde.gaussian_kde(distro)
-        
-        x_min = np.asarray(distro[0]).min()
-        x_max = np.asarray(distro[0]).max()
-        y_min = np.asarray(distro[1]).min()
-        y_max = np.asarray(distro[1]).max()
-        
-        mfunc1 = getKDE((x_min,x_max), (y_min,y_max),kde)
         
         '''
         #find GMM approx
@@ -959,7 +953,36 @@ def main():
         
         qstart = time.clock() #cpu time
         samples_arr, evalfunc = interpFromQuantiles3(ppos=[ppos[0],ypos], ignore_cache = 'True', half=True)
-        distro2, interpType, suc = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], (x_min,x_max), (y_min,y_max))
+        
+        #find KDE benchmark
+        distro = getVclinSamplesSingle([ppos[0],ypos])
+        kdes.append(distro)
+        
+        kde = stats.kde.gaussian_kde(distro)
+        
+        x_min = np.asarray(distro[0]).min()
+        x_max = np.asarray(distro[0]).max()
+        y_min = np.asarray(distro[1]).min()
+        y_max = np.asarray(distro[1]).max()
+        
+        '''
+        for gp in samples_arr:
+            if x_min > gp[0].min():
+                x_min = gp[0].min()
+            if x_max < gp[0].max():
+                x_max = gp[0].max()
+                
+            if y_min > gp[1].min():
+                y_min = gp[1].min()
+            if y_max < gp[1].max():
+                y_max = gp[1].max()
+        '''    
+        
+        mfunc1 = getKDE((x_min,x_max), (y_min,y_max),kde)
+        
+        
+        distro2, interpType, suc = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
+                                                         (x_min,x_max), (y_min,y_max))
         qend = time.clock()
         
         qtot = qend - qstart
@@ -979,14 +1002,15 @@ def main():
         title1 = dt + str(ppos[0]) + '_' + str(ypos) + '_kde_skl_' + str(skl1) 
         #title3 = str(ppos[0]) + '_' + str(ypos) + '_gmm_' + str(skl3)
         title4 = dt + str(ppos[0]) + '_' + str(ypos) + '_q_skl_'   + str(skl4) + '_elapsed_' + str(qtot)
-         
-        plotKDE(kde,distro, title1, co = green)
+        
+        plotKDE(kde,distro,mx=(x_min,x_max), my=(y_min,y_max), title=title1, co = green)
         
         #plotDistro((x_min,x_max), (y_min,y_max), title3, params = lerp_params,color=red)
         plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr, col=blue)
-        #plotXYZScatter(evalfunc[0],evalfunc[1],evalfunc[2], arr=samples_arr )
+        plotXYZScatter(evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(ppos[0]) + \
+                       '_' + str(ypos) + '_Interp_', arr=samples_arr )
         
-        if ypos == 31.0:
+        if ypos == 38.0:
             '''
             lerp_params_actual = interpFromGMM([ppos[0],ypos], ignore_cache = 'True', half=False)
             bivGMM_actual = getBivariateGMM((x_min,x_max), (y_min,y_max), params = lerp_params_actual)
@@ -1008,9 +1032,10 @@ def main():
             skl4b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2_a, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
             skl4_a = skl4f_a + skl4b_a
             
-            title4_a = dt + str(ppos[0]) + '_' + str(ypos) + '_q_not_interpolated_'   + str(skl4_a)
+            title4_a = dt + str(ppos[0]) + '_' + str(ypos) + '_q_not_interpolated_skl_'   + str(skl4_a)
             plotXYZSurf((x_min,x_max), (y_min,y_max), distro2_a, title4_a, samples_arr_a, col=blue)
-            #plotXYZScatter(evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], arr=samples_arr_a )
+            plotXYZScatter(evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], title=dt + str(ppos[0]) + \
+                           '_' + str(ypos) + '_NOT_Interp_', arr=samples_arr_a )
     
     print 'finished!'
             
@@ -1287,6 +1312,9 @@ DIVR = 200
 
 def findBivariateQuantilesSinglePass(kde,arr):
     
+    #cpu time
+    qstart = time.clock() 
+    
     global QUANTILES, DIV, DIVR
     
     
@@ -1369,6 +1397,11 @@ def findBivariateQuantilesSinglePass(kde,arr):
             y_pos.append(y)
             
     print 'finished computing quantile curves'
+    
+    #cpu time
+    qend = time.clock()
+    qtot = qend - qstart
+    print 'cpu time for KDE integration (EDCF): ' + str(qtot) 
             
     return x_pos, y_pos, z_pos, qcurvex, qcurvey
 
@@ -1661,9 +1694,30 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0, ignore_cache = 'False', 
     x3, y3, z3 = lerpBivariate3(gp0_kde, gp1_kde, gp2_kde, gp3_kde,\
                                             alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, samples_arr, use_cache=half )
     
+    
+    x_min = np.asarray(gpt0_samp[0]).min()
+    x_max = np.asarray(gpt0_samp[0]).max()
+    y_min = np.asarray(gpt0_samp[1]).min()
+    y_max = np.asarray(gpt0_samp[1]).max()
+    
+    '''
+    for gp in samples_arr:
+        if x_min > gp[0].min():
+            x_min = gp[0].min()
+        if x_max < gp[0].max():
+            x_max = gp[0].max()
+            
+        if y_min > gp[1].min():
+            y_min = gp[1].min()
+        if y_max < gp[1].max():
+            y_max = gp[1].max()
+    
+    plotKDE(gp0_kde,gpt0_samp, mx=(x_min,x_max), my=(y_min,y_max), title= "gpt0_kde", co = green)
+    plotKDE(gp1_kde,gpt1_samp, mx=(x_min,x_max), my=(y_min,y_max), title="gpt1_kde", co = green)
+    plotKDE(gp2_kde,gpt2_samp, mx=(x_min,x_max), my=(y_min,y_max), title="gpt2_kde", co = green)
+    plotKDE(gp3_kde,gpt3_samp, mx=(x_min,x_max), my=(y_min,y_max), title="gpt3_kde", co = green)
+    '''
     #plotXYZScatter(x3, y3, z3, str(number)+'final'+str(sl), arr=samples_arr )
-    
-    
     #plotXYZSurf(distro,title=str(number)+'final'+str(sl),arr=samples_arr )
     
     return samples_arr, [x3,y3,z3]
@@ -1682,6 +1736,8 @@ def computeDistroFunction(x_pos,y_pos,z_pos, mmx, mmy):
     distro_eval = None
     success = False
     interp_type = ''
+    
+    print "in computeDistroFunction..."
     
     while success is False:
         try:
@@ -1742,7 +1798,7 @@ def plotXYZScatter(x_pos,y_pos,z_pos, title = '', arr=[]):
         
     ax.set_zlabel('density')
     ax.set_zlim(0, np.asarray(z_pos).max())
-    #plt.savefig(OUTPUT_DATA_DIR + str(title) + "scatter.png")
+    plt.savefig(OUTPUT_DATA_DIR + str(title) + "scatter.png")
     #plt.show()
     
 def plotXYZSurf(mmx, mmy, surface, title = '', arr=[], col='0.75'):

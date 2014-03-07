@@ -1,4 +1,8 @@
 #!/usr/bin/python
+
+PROJ_PATH = '/home/behollis/thesis_code/code/interpRevProj/src/'
+import sys
+sys.path.append(PROJ_PATH)
 import netCDF4 
 import sys, struct
 import rpy2.robjects as robjects
@@ -41,14 +45,15 @@ def main():
     oslat = startlat
     oslon = startlon
     
-    BLOCK_SIZE = 2
+    BLOCK_SIZE = 1
     
     #5x5 blocks
     sklgrid = np.zeros(shape=(BLOCK_SIZE,BLOCK_SIZE))
     
+    gclock_total = time.clock()
     gclock = time.clock()
     
-    for oslat in range(6, LAT-BLOCK_SIZE, BLOCK_SIZE):
+    for oslat in range(18, LAT-BLOCK_SIZE, BLOCK_SIZE):
         for oslon in range(0, LON-BLOCK_SIZE, BLOCK_SIZE):
             #calculate skl for block 
             for ilat in range(oslat,BLOCK_SIZE+oslat,1):
@@ -60,7 +65,7 @@ def main():
                     #find KDE benchmark
                     distro = getVclinSamplesSingle([ilat,ilon])
                     
-                    skl = 0.
+                    skl = 0
                     kde = None
                     
                     try:
@@ -100,18 +105,24 @@ def main():
                             skl4b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2_a, min_x=x_min, max_x=x_max, \
                                                   min_y=y_min, max_y=y_max)
                             skl = skl4f_a + skl4b_a
+                            
+                            title1 = dt + str(oslat) + '_' + str(oslon) + '_kde_' 
+                            title4 = dt + str(oslat) + '_' + str(oslon) + '_q_skl_NOTINTERPOLATED_'   + str(skl) 
+                            plotKDE(kde,distro, title1, co = green)
+                            plotXYZSurf((x_min,x_max), (y_min,y_max), distro2_a, title4, samples_arr_a, col=blue)
+                            
                         else:
                             
                             samples_arr, evalfunc = interpFromQuantiles3(ppos=[ilat,ilon], \
                                                                          ignore_cache = 'True', half=True)
                             
-                            if evalfunc_a == None:
+                            if evalfunc == None:
                                 print 'lat: ' + str(ilat)
                                 print 'lon: ' + str(ilon)
                                 print 'interpFromQuantile Failed...writing zero.'
                                 continue
                             
-                            distro2, interpType = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
+                            distro2, interpType, success = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
                                                                         (x_min,x_max), (y_min,y_max))
                             
                             if not success:
@@ -126,6 +137,11 @@ def main():
                                                 min_y=y_min, max_y=y_max)
                             skl = skl4f + skl4b
                             
+                            title1 = dt + str(oslat) + '_' + str(oslon) + '_kde_' 
+                            title4 = dt + str(oslat) + '_' + str(oslon) + '_q_skl_interpolated_'   + str(skl) 
+                            plotKDE(kde,distro, title1, co = green)
+                            plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr, col=blue)
+                            
                     except:
                         print 'lat: ' + str(ilat)
                         print 'lon: ' + str(ilon)
@@ -134,7 +150,7 @@ def main():
                         
                     print 'lat: ' + str(ilat)
                     print 'lon: ' + str(ilon)
-                    print 'skl: ' + str(skl)
+                    print '***skl: ' + str(skl)
                     
                     sklgrid[ilat-oslat,ilon-oslon] = skl
              
@@ -156,7 +172,11 @@ def main():
             gclock = time.clock()
             sklgrid = np.zeros(shape=(BLOCK_SIZE,BLOCK_SIZE))
     
+    #cpu time
+    qend = time.clock()
+    qtot = qend - gclock_total
     print 'COMPLETE!'
+    print 'TOTAL TIME: ' + str(qtot)
             
 if __name__ == "__main__":  
     main()
