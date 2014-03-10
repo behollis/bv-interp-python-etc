@@ -69,10 +69,10 @@ def calcEM(hist1,hist2,h_bins,s_bins):
 ### MAIN ########################################################################
 if __name__=="__main__":
     #Load image 1
-    src1 = cv.LoadImage("image1.jpg")
+    src1 = cv.LoadImage("/home/behollis/scipy_org_logo.gif")
 
     #Load image 1
-    src2 = cv.LoadImage("image2.jpg")
+    src2 = cv.LoadImage("/home/behollis/opencv-logo-white.png")
 
     # Get histograms
     #histSrc1= hs_histogram(src1)

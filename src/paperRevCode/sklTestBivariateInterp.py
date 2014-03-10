@@ -95,7 +95,7 @@ g_grid_params_array = []
 g_grid_kde_array = []
 g_grid_quantile_curves_array = []
 
-QUANTILES = 100
+QUANTILES = 50
 '''
 divs = 80
 div = complex(divs)
@@ -1007,7 +1007,7 @@ def main():
         
         #plotDistro((x_min,x_max), (y_min,y_max), title3, params = lerp_params,color=red)
         plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr, col=blue)
-        plotXYZScatter(evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(ppos[0]) + \
+        plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(ppos[0]) + \
                        '_' + str(ypos) + '_Interp_', arr=samples_arr )
         
         if ypos == 38.0:
@@ -1034,7 +1034,7 @@ def main():
             
             title4_a = dt + str(ppos[0]) + '_' + str(ypos) + '_q_not_interpolated_skl_'   + str(skl4_a)
             plotXYZSurf((x_min,x_max), (y_min,y_max), distro2_a, title4_a, samples_arr_a, col=blue)
-            plotXYZScatter(evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], title=dt + str(ppos[0]) + \
+            plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], title=dt + str(ppos[0]) + \
                            '_' + str(ypos) + '_NOT_Interp_', arr=samples_arr_a )
     
     print 'finished!'
@@ -1307,8 +1307,8 @@ def bilinearBivarQuantLerp(f1, f2, f3, f4, x1, y1, x2, y2, x3, y3, x4, y4, alpha
     
     return f_bar_01[0]
 
-DIV = 200j 
-DIVR = 200
+DIV = 50j 
+DIVR = 50
 
 def findBivariateQuantilesSinglePass(kde,arr):
     
@@ -1505,10 +1505,10 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     #smaller quantiles have longer quantile curves, so we adjust this number based on quantile below
     num_pts_to_eval_on_curve = MID_RANGE_QUANTILE_CURVE_POINTS
     for iq in range(0,QUANTILES):#, q in enumerate(qcurvex0):
-        if iq <= 0.5*QUANTILES:
-            num_pts_to_eval_on_curve = 3*MID_RANGE_QUANTILE_CURVE_POINTS
-        else:
-            num_pts_to_eval_on_curve = MID_RANGE_QUANTILE_CURVE_POINTS
+        #if iq <= 0.5*QUANTILES:
+        #    num_pts_to_eval_on_curve = 3*MID_RANGE_QUANTILE_CURVE_POINTS
+        #else:
+        #    num_pts_to_eval_on_curve = MID_RANGE_QUANTILE_CURVE_POINTS
             
         print str(iq) + "th quantile curve being lerped out of " + str(QUANTILES)
         #get an x,y pair for current quantile on each pdf end points
@@ -1764,12 +1764,14 @@ def computeDistroFunction(x_pos,y_pos,z_pos, mmx, mmy):
     print 'type? -> ' + str(interp_type)
     return distro_eval, interp_type, success
 
-def plotXYZScatter(x_pos,y_pos,z_pos, title = '', arr=[]):
+def plotXYZScatter((u_min,u_max),(v_min, v_max), x_pos,y_pos,z_pos, title = '', arr=[]):
     
+    '''
     u_min = arr[0].T[:,0].min()
     u_max = arr[0].T[:,0].max()
     v_min = arr[0].T[:,1].min()
     v_max = arr[0].T[:,1].max()
+    
     for d in arr:
         u_min_temp = d.T[:,0].min()
         if u_min_temp < u_min:
@@ -1786,6 +1788,7 @@ def plotXYZScatter(x_pos,y_pos,z_pos, title = '', arr=[]):
         v_max_temp = d.T[:,1].max()
         if v_max_temp > v_max:
             v_max = v_max_temp
+    '''
     
     fig = plt.figure()
     ax = fig.gca(projection='3d')

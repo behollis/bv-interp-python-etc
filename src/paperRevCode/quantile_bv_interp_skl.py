@@ -11,7 +11,6 @@ import matplotlib.cm as cm
 import pylab as p
 import mpl_toolkits.mplot3d.axes3d as p3
 import math
-
 #import gaussian_fit
 import sum_of_gaussians_interpolation as sog
 from netcdf_reader import *
@@ -21,11 +20,11 @@ import mayavi
 from peakfinder import *
 from quantile_lerp import *
 import os
-
 import datetime 
-dt = 'stampeMicroSec_' + str(datetime.datetime.now().microsecond) + '_' 
-
 import time
+from cv2 import *
+
+dt = 'stampeMicroSec_' + str(datetime.datetime.now().microsecond) + '_' 
 
 q_prev_max_vel_x = 0.0
 q_prev_max_vel_y = 0.0
@@ -78,7 +77,7 @@ g_grid_params_array = []
 g_grid_kde_array = []
 g_grid_quantile_curves_array = []
 
-QUANTILES = 50
+QUANTILES = 70
 
 def createGlobalParametersArray(dimx, dimy):
     global g_grid_params_array
@@ -774,6 +773,24 @@ def plotXYZSurf(mmx, mmy, surface, title = '', arr=[], col='0.75'):
     plt.savefig(OUTPUT_DATA_DIR + str(title) + ".jpg")
     #plt.show() 
     
+def convertNumpyArrayToOpenCVSignature(numpyMat):
+    #append coord of each row for opencv conversion.
+    newMat = np.zeros( shape = ( numpyMat.shape[0] * numpyMat.shape[1], 1+ len(numpyMat.shape) ) )
+                                       
+    for row in range( 0, numpyMat.shape[0], 1 ): 
+        for col in range( 0, numpyMat.shape[1], 1 ): 
+            newRow = row*col + col
+            newMat[newRow][0] = numpyMat[row][col]
+            newMat[newRow][1] = row
+            newMat[newRow][2] = col
+            
+    # Convert from numpy array to CV_32FC1 Mat
+    a64 = cv.fromarray(newMat)
+    a32 = cv.CreateMat(a64.rows, a64.cols, cv.CV_32FC1)
+    cv.Convert(a64, a32)
+
+    return a32
+    
 def main():
     loadNetCdfData()
     remapGridData()
@@ -782,6 +799,7 @@ def main():
     createGlobalQuantileArray(LAT,LON)
     
     ppos = [0,36]
+    #ppos = [44,30]
     
     kdes = []
     
@@ -791,51 +809,28 @@ def main():
     red = '#f08080'
     purple = '#ee82ee'
       
-    for idx in range(0,11):
-        ypos = ppos[1] + 0.2*idx
-        
-        samples_arr, evalfunc = interpFromQuantiles3(ppos=[ppos[0],ypos], ignore_cache = 'True', half=True)
+    for idx in range(0,3):
+        ypos = ppos[1] + 1.0*idx
         
         #find KDE benchmark
-        '''
         distro = getVclinSamplesSingle([ppos[0],ypos])
     
         kde = stats.kde.gaussian_kde(distro)
-        
-        
         x_min = np.asarray(distro[0]).min()
         x_max = np.asarray(distro[0]).max()
         y_min = np.asarray(distro[1]).min()
         y_max = np.asarray(distro[1]).max()
         
-        mfunc1 = getKDEGriddata((x_min,x_max), (y_min,y_max),kde)
+        mfunc1 = getKDEGriddata((x_min,x_max), (y_min,y_max), kde)
+
+        #http://stackoverflow.com/questions/15706339/how-to-compute-emd-for-2-numpy-arrays-i-e-histogram-using-opencv
+        sigKDE = convertNumpyArrayToOpenCVSignature(mfunc1)
+
+        emdKDE = cv.CalcEMD2(sigKDE, sigKDE, cv.CV_DIST_L2)
+        print emdKDE
         
-        distro2, interpType, suc = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
-                                                         (x_min,x_max), (y_min,y_max))
-                                                         
-        '''
-       
+        samples_arr, evalfunc = interpFromQuantiles3(ppos=[ppos[0],ypos], ignore_cache = 'True', half=True)
         
-        '''
-        skl1 = kl_div_2D_M(mfunc1, mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl4f = kl_div_2D_M(mfunc1=distro2, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl4b = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-        skl4 = skl4f + skl4b
-        
-        title1 = dt + str(ppos[0]) + '_' + str(ypos) + '_kde_skl_' + str(skl1) 
-        '''
-        title4 = dt + str(ppos[0]) + '_' + str(ypos) + '_q_skl_'   #+ str(skl4) 
-        
-        
-        #plotKDE(kde,distro,mx=(x_min,x_max), my=(y_min,y_max), title=title1, co = green)
-        
-        #plot interpolants in range of kde
-        
-        #plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr, col=blue)
-        #plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(ppos[0]) + \
-        #               '_' + str(ypos) + '_Interp_', arr=samples_arr )
-        
-       
         x_min = np.asarray(evalfunc[0]).min()
         x_max = np.asarray(evalfunc[0]).max()
         y_min = np.asarray(evalfunc[1]).min()
@@ -844,12 +839,19 @@ def main():
         distro2, interpType, suc = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
                                                          (x_min,x_max), (y_min,y_max))
         
+        sigQuant = convertNumpyArrayToOpenCVSignature(distro2)
+        emdQuant = cv.CalcEMD2(sigKDE, sigQuant, cv.CV_DIST_L2)
+        
+        titleKDE = dt + str(ppos[0]) + '_' + str(ypos) + '_kde_emd_' + str(emdKDE) 
+        titleQuantInterp = dt + str(ppos[0]) + '_' + str(ypos) + '_q_emd_'   + str(emdQuant) 
+        
         #plot interpolants in their range
-        plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, title4, samples_arr, col=blue)
+        plotKDE(kde,distro,(x_min,x_max), (y_min,y_max), titleKDE, co=green)
+        plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, titleQuantInterp, samples_arr, col=blue)
         plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(ppos[0]) + \
                        '_' + str(ypos) + '_Interp_', arr=samples_arr )
-           
-        '''            
+             
+        #find full resolution, non-interpolated distribution       
         if ypos == 37.0:
             #find quantile approx (include surface interpolant choice)
             
@@ -863,17 +865,16 @@ def main():
             distro2_a, interpType_a, suc = computeDistroFunction(evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], \
                                                              (x_min,x_max), (y_min,y_max))
             
-            skl4f_a = kl_div_2D_M(mfunc1=distro2_a, mfunc2=mfunc1, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-            skl4b_a = kl_div_2D_M(mfunc1=mfunc1, mfunc2=distro2_a, min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max)
-            skl4_a = skl4f_a + skl4b_a
+            actualQuantSig = convertNumpyArrayToOpenCVSignature(distro2_a)
+            emdQuantA = cv.CalcEMD2(sigKDE, actualQuantSig, cv.CV_DIST_L2)
             
-            title4_a = dt + str(ppos[0]) + '_' + str(ypos) + '_q_not_interpolated_skl_'   + str(skl4_a)
+            title4_a = dt + str(ppos[0]) + '_' + str(ypos) + '_q_not_interpolated_emd_'   + str(emdQuantA)
             
             plotXYZSurf((x_min,x_max), (y_min,y_max), distro2_a, title4_a, samples_arr_a, col=blue)
             plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], title=dt + str(ppos[0]) + \
                            '_' + str(ypos) + '_NOT_Interp_', arr=samples_arr_a )
-        '''
     
+
     print 'finished!'
             
 if __name__ == "__main__":  
