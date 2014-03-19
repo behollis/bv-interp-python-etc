@@ -24,7 +24,7 @@ import datetime
 import time
 from cv2 import *
 
-dt = 'stampeMicroSec_' + str(datetime.datetime.now().microsecond) + '_' 
+dt = 'stampMicroSec_' + str(datetime.datetime.now().microsecond) + '_' 
 
 q_prev_max_vel_x = 0.0
 q_prev_max_vel_y = 0.0
@@ -66,26 +66,47 @@ r = robjects.r
 
 ZERO_ARRAY = np.zeros(shape=(MEM,1))
 
-SAMPLES = 600
-vclin_x = np.ndarray(shape=(SAMPLES,LAT,LON))
-vclin_y = np.ndarray(shape=(SAMPLES,LAT,LON))
+SAMPLES = 2000
+QUANTILES = 100
+vclin_x = np.ndarray(shape=(SAMPLES,3,3))
+vclin_y = np.ndarray(shape=(SAMPLES,3,3))
 
-vclin_half = np.ndarray(shape=(SAMPLES,LAT/2 + 1,LON/2 + 1,2))
-vclin_half = np.ndarray(shape=(SAMPLES,LAT/2 + 1,LON/2 + 1,2))
-
-g_grid_params_array = []
 g_grid_kde_array = []
 g_grid_quantile_curves_array = []
 
-QUANTILES = 100
-
-def createGlobalParametersArray(dimx, dimy):
-    global g_grid_params_array
+def defineVclin():
+    div = DIV
+    div_real = DIVR
     
-    for idx in range(0,dimx):
-        g_grid_params_array.append([])
-        for idy in range(0,dimy):
-            g_grid_params_array[idx].append([])
+    mean1 = [0,-1]
+    cov1 = [[1,0],[0,1]] 
+    x1,y1 = np.random.multivariate_normal(mean1,cov1,SAMPLES).T
+    
+    #bimodal bivariate grid point distribution
+    mean3 = [+2,+1]
+    cov3 = [[1,0],[0,1]] 
+    mean4 = [-2,-1]
+    cov4 = [[1.5,0],[0,1.5]] 
+    
+    x3,y3 = np.random.multivariate_normal(mean3,cov3,int(0.6*SAMPLES)).T
+    x4,y4 = np.random.multivariate_normal(mean4,cov4,int(0.4*SAMPLES)).T
+    
+    x_tot = np.append(x3,x4)
+    y_tot = np.append(y3,y4)
+    
+    for x in range(0,3):
+        for y in range(0,3):
+            for idx in range(0,SAMPLES):
+                if x == 1 and y == 1:
+                    continue
+                
+                vclin_x[idx][x][y] = x1[idx] 
+                vclin_y[idx][x][y] = y1[idx]  
+                
+    #define bimodal bivariate grid point
+    for idx in range(0,SAMPLES):
+        vclin_x[idx][1][1] = x_tot[idx]
+        vclin_y[idx][1][1] = y_tot[idx]        
 
 def createGlobalKDEArray(dimx, dimy):
     global g_grid_kde_array
@@ -130,16 +151,10 @@ def getGridPoints(ppos=[0.0,0.0], half=False):
     
     #find four corner grid point indices, numbered from gpt0 = (bottom, left) TO gpt3 = (top, right)
     #calculated from whole parts 
-    if half == False:
-        gpt0 = [ppos_parts[0][1], ppos_parts[1][1]]
-        gpt1 = [ppos_parts[0][1] + 1, ppos_parts[1][1]]
-        gpt2 = [ppos_parts[0][1], ppos_parts[1][1] + 1]
-        gpt3 = [ppos_parts[0][1] + 1, ppos_parts[1][1] + 1]
-    else:
-        gpt0 = [ppos_parts[0][1] / 2, ppos_parts[1][1] / 2]
-        gpt1 = [ppos_parts[0][1] / 2 + 1, ppos_parts[1][1] / 2]
-        gpt2 = [ppos_parts[0][1] / 2, ppos_parts[1][1] / 2 + 1]
-        gpt3 = [ppos_parts[0][1] / 2 + 1, ppos_parts[1][1] / 2 + 1]
+    gpt0 = [ppos_parts[0][1], ppos_parts[1][1]]
+    gpt1 = [ppos_parts[0][1] + 1, ppos_parts[1][1]]
+    gpt2 = [ppos_parts[0][1], ppos_parts[1][1] + 1]
+    gpt3 = [ppos_parts[0][1] + 1, ppos_parts[1][1] + 1]
     
     return gpt0, gpt1, gpt2, gpt3
 
@@ -150,34 +165,18 @@ def getVclinSamples(gpt0, gpt1, gpt2, gpt3, half=False):
     gpt3_dist = np.zeros(shape=(2,SAMPLES))
     
     for idx in range(0,MEM):#SAMPLES):
+        gpt0_dist[0][idx] = vclin_x[idx][gpt0[0]][gpt0[1]]
+        gpt0_dist[1][idx] = vclin_y[idx][gpt0[0]][gpt0[1]]
+     
+        gpt1_dist[0][idx] = vclin_x[idx][gpt1[0]][gpt1[1]]
+        gpt1_dist[1][idx] = vclin_y[idx][gpt1[0]][gpt1[1]] 
         
-        if not half:
-            gpt0_dist[0][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][0]
-            gpt0_dist[1][idx] = vclin[idx][gpt0[0]][gpt0[1]][SEED_LEVEL][1]
-         
-            gpt1_dist[0][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][0]
-            gpt1_dist[1][idx] = vclin[idx][gpt1[0]][gpt1[1]][SEED_LEVEL][1] 
-            
-            gpt2_dist[0][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][0]
-            gpt2_dist[1][idx] = vclin[idx][gpt2[0]][gpt2[1]][SEED_LEVEL][1] 
-            
-            gpt3_dist[0][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][0]
-            gpt3_dist[1][idx] = vclin[idx][gpt3[0]][gpt3[1]][SEED_LEVEL][1] 
-        else:
-            gpt0_dist[0][idx] = vclin_half[idx][gpt0[0]][gpt0[1]][0]
-            gpt0_dist[1][idx] = vclin_half[idx][gpt0[0]][gpt0[1]][1]
-         
-            gpt1_dist[0][idx] = vclin_half[idx][gpt1[0]][gpt1[1]][0]
-            gpt1_dist[1][idx] = vclin_half[idx][gpt1[0]][gpt1[1]][1] 
-            
-            gpt2_dist[0][idx] = vclin_half[idx][gpt2[0]][gpt2[1]][0]
-            gpt2_dist[1][idx] = vclin_half[idx][gpt2[0]][gpt2[1]][1] 
-            
-            gpt3_dist[0][idx] = vclin_half[idx][gpt3[0]][gpt3[1]][0]
-            gpt3_dist[1][idx] = vclin_half[idx][gpt3[0]][gpt3[1]][1] 
-            
-            
-   
+        gpt2_dist[0][idx] = vclin_x[idx][gpt2[0]][gpt2[1]]
+        gpt2_dist[1][idx] = vclin_y[idx][gpt2[0]][gpt2[1]] 
+        
+        gpt3_dist[0][idx] = vclin_x[idx][gpt3[0]][gpt3[1]]
+        gpt3_dist[1][idx] = vclin_y[idx][gpt3[0]][gpt3[1]]
+    
     return gpt0_dist, gpt1_dist, gpt2_dist, gpt3_dist
 
 def plotKDE(kde,distro, mx = (0,0), my = (0, 0), title = '', co = 'green'):
@@ -262,26 +261,6 @@ blue = '#87ceeb'
 red = '#f08080'
 purple = '#ee82ee'
     
-
-
-def kl_div_2D_M(mfunc1,mfunc2,min_x=-5, max_x=5, min_y=-5, max_y=5):
-    "Calculates the KL divergence D(A||B) between the distributions A and B.\nUsage: div = kl_divergence(A,B)"
-    
-    global DIV
-    
-    D = .0
-
-    # Regular grid to evaluate upon
-    u_vals = np.r_[min_x:max_x:DIV]
-    v_vals = np.r_[min_y:max_y:DIV]
-    
-    #incr = math.fabs(min_x - max_x) / div
-    for u in u_vals:
-        for v in v_vals:
-            if mfunc2[u,v] != .0 and mfunc1[u,v] != .0:
-                D += mfunc1[u,v] * math.log( mfunc1[u,v] / mfunc2[u,v] ) 
-    return D 
-    
 ########################################################################################################
 
 #from rpy2.robjects.numpy2ri import numpy2ri
@@ -293,58 +272,10 @@ def getVclinSamplesSingle(gpt):
     gpt0_dist = np.zeros(shape=(2,MEM))
    
     for idx in range(0,MEM):
-        gpt0_dist[0][idx] = vclin[idx][gpt[0]][gpt[1]][SEED_LEVEL][0]
-        gpt0_dist[1][idx] = vclin[idx][gpt[0]][gpt[1]][SEED_LEVEL][1]
+        gpt0_dist[0][idx] = vclin_x[idx][gpt[0]][gpt[1]][0]
+        gpt0_dist[1][idx] = vclin_y[idx][gpt[0]][gpt[1]][1]
    
     return gpt0_dist
-
-#store in a subsampled array that can be accessed
-#with existing interpolation code
-def remapGridData():
-    for idx in range(0,MEM):
-        for lat in range(0,LAT):
-            for lon in range(0,LON):
-                if lat % 2 == 0 and lon % 2 == 0:
-                    #only even coordinate pairs are sampled
-                       
-                    mlat = 0; mlon = 0
-                    
-                    if lat == 0:
-                        mlat = 0
-                    else:
-                        mlat = lat / 2
-                        
-                    if lon == 0:
-                        mlon = 0
-                    else:
-                        mlon = lon / 2
-                        
-                    #print 'Sampled LAT: ' + str(lat)
-                    #print 'Sampled LON: ' + str(lon)
-                    #print 'Mapped LAT: ' + str(lat) + ' To: ' + str(mlat)
-                    #print 'Sampled LON: ' + str(lon)  + ' To: ' + str(mlon)
-                    
-                    vclin_half[idx][mlat][mlon][0] = vclin[idx][lat][lon][SEED_LEVEL][0]
-                    vclin_half[idx][mlat][mlon][1] = vclin[idx][lat][lon][SEED_LEVEL][1]
-        
-def loadNetCdfData():
-    global vclin
-    
-    #realizations file 
-    pe_dif_sep2_98_file = INPUT_DATA_DIR + FILE_NAME
-    pe_fct_aug25_sep2_file = INPUT_DATA_DIR + FILE_NAME_CENTRAL_FORECAST 
-    
-    #realizations reader 
-    rreader = NetcdfReader(pe_dif_sep2_98_file)
-    
-    #central forecasts reader 
-    creader = NetcdfReader(pe_fct_aug25_sep2_file)
-    vclin8 = creader.readVarArray('vclin', 7)
-    
-    #deviations from central forecast for all 600 realizations
-    vclin = rreader.readVarArray('vclin')  
-    vclin = addCentralForecast(vclin, vclin8, level_start=SEED_LEVEL, level_end=SEED_LEVEL)  
-    
         
 import rpy2.robjects.numpy2ri as rpyn
 
@@ -448,7 +379,7 @@ def findBivariateQuantilesSinglePass(kde,arr):
 
 MID_RANGE_QUANTILE_CURVE_POINTS = 150
 
-def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, arr, use_cache=False):
+def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, arr, use_cache=True):
     
     totalCpuStart = time.clock()
     
@@ -466,7 +397,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex0 = gp0_qcurve[0]
     qcurvey0 = gp0_qcurve[1]
     spline_curve0 = gp0_qcurve[2]
-    if len(gp0_qcurve[0]) == 0 or use_cache == False:
+    if len(gp0_qcurve[0]) == 0 or use_cache is False:
         #print 'computing quantile curves gp0...'
         x_pos0, y_pos0, z_pos0, qcurvex0, qcurvey0 = findBivariateQuantilesSinglePass(gp0,arr[0])
         #plotXYZScatterQuants(qcurvex0, qcurvey0, title='qcurve0')
@@ -494,7 +425,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex1 = gp1_qcurve[0]
     qcurvey1 = gp1_qcurve[1]
     spline_curve1 = gp1_qcurve[2]
-    if len(gp1_qcurve[0]) == 0 or use_cache == False:
+    if len(gp1_qcurve[0]) == 0 or use_cache is False:
         #print 'computing quantile curves gp1...'
         x_pos1, y_pos1, z_pos1, qcurvex1, qcurvey1 = findBivariateQuantilesSinglePass(gp1,arr[1])
         #plotXYZScatterQuants(qcurvex1, qcurvey1, title='qcurve1')
@@ -515,7 +446,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex2 = gp2_qcurve[0]
     qcurvey2 = gp2_qcurve[1]
     spline_curve2 = gp2_qcurve[2]
-    if len(gp2_qcurve[0]) == 0 or use_cache == False:
+    if len(gp2_qcurve[0]) == 0 or use_cache is False:
         #print 'computing quantile curves gp2...'
         x_pos2, y_pos2, z_pos2, qcurvex2, qcurvey2 = findBivariateQuantilesSinglePass(gp2,arr[2])
         #plotXYZScatterQuants(qcurvex2, qcurvey2, title='qcurve2')
@@ -536,7 +467,7 @@ def lerpBivariate3(gp0, gp1, gp2, gp3, alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3,
     qcurvex3 = gp3_qcurve[0]
     qcurvey3 = gp3_qcurve[1]
     spline_curve3 = gp3_qcurve[2]
-    if len(gp3_qcurve[0]) == 0 or use_cache == False:
+    if len(gp3_qcurve[0]) == 0 or use_cache is False:
         #print 'computing quantile curves gp3...'
         x_pos3, y_pos3, z_pos3, qcurvex3, qcurvey3 = findBivariateQuantilesSinglePass(gp3, arr[3])
         #plotXYZScatterQuants(qcurvex3, qcurvey3, title='qcurve3')
@@ -725,8 +656,8 @@ def interpFromQuantiles3(ppos=[0.0,0.0], number=0,sl=0, ignore_cache = 'False', 
         alpha_x = pm.modf(ppos[0] / 2)[0]
         alpha_y = pm.modf(ppos[1] / 2)[0]
     
-    x3, y3, z3 = lerpBivariate3(gp0_kde, gp1_kde, gp2_kde, gp3_kde,\
-                                            alpha_x, alpha_y, gpt0, gpt1, gpt2, gpt3, samples_arr, use_cache=half )
+    x3, y3, z3 = lerpBivariate3(gp0_kde, gp1_kde, gp2_kde, gp3_kde, alpha_x, \
+                                alpha_y, gpt0, gpt1, gpt2, gpt3, samples_arr)
     
     '''
     plotKDE(gp0_kde,gpt0_samp, title="gpt0_kde", co = green)
@@ -817,107 +748,39 @@ def plotXYZSurf(mmx, mmy, surface, title = '', arr=[], col='0.75'):
     plt.savefig(OUTPUT_DATA_DIR + str(title) + ".jpg")
     #plt.show() 
     
-def convertNumpyArrayToOpenCVSignature(numpyMat):
-    #append coord of each row for opencv conversion.
-    newMat = np.zeros( shape = ( numpyMat.shape[0] * numpyMat.shape[1], 1+ len(numpyMat.shape) ) )
-                                       
-    for row in range( 0, numpyMat.shape[0], 1 ): 
-        for col in range( 0, numpyMat.shape[1], 1 ): 
-            newRow = row*col + col
-            newMat[newRow][0] = numpyMat[row][col]
-            newMat[newRow][1] = row
-            newMat[newRow][2] = col
-            
-    # Convert from numpy array to CV_32FC1 Mat
-    a64 = cv.fromarray(newMat)
-    a32 = cv.CreateMat(a64.rows, a64.cols, cv.CV_32FC1)
-    cv.Convert(a64, a32)
-
-    return a32
-    
 def main():
-    loadNetCdfData()
-    remapGridData()
+    defineVclin()
+    createGlobalKDEArray(3,3)
+    createGlobalQuantileArray(3,3)
     
-    createGlobalKDEArray(LAT,LON)
-    createGlobalQuantileArray(LAT,LON)
-    
-    ppos = [0,36]
-    #ppos = [44,30]
-    
-    kdes = []
-    
+    ppos = [1,0]
+   
     ''' http://www.tayloredmktg.com/rgb/#PA '''
     green = '#98fb98'
     blue = '#87ceeb'
     red = '#f08080'
     purple = '#ee82ee'
       
-    for idx in range(0,3):
-        xpos = ppos[0] + 1.0*idx
+    for beta in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] :
+        ypos = ppos[1] + beta
         
-        #find KDE benchmark
-        distro = getVclinSamplesSingle([xpos,ppos[1]])
-    
-        kde = stats.kde.gaussian_kde(distro)
-        x_min = np.asarray(distro[0]).min()
-        x_max = np.asarray(distro[0]).max()
-        y_min = np.asarray(distro[1]).min()
-        y_max = np.asarray(distro[1]).max()
-        
-        mfunc1 = getKDEGriddata((x_min,x_max), (y_min,y_max), kde)
-
-        #http://stackoverflow.com/questions/15706339/how-to-compute-emd-for-2-numpy-arrays-i-e-histogram-using-opencv
-        sigKDE = convertNumpyArrayToOpenCVSignature(mfunc1)
-
-        emdKDE = cv.CalcEMD2(sigKDE, sigKDE, cv.CV_DIST_L2)
-        
-        samples_arr, evalfunc = interpFromQuantiles3(ppos=[xpos,ppos[1]], ignore_cache = 'True', half=True)
+        samples_arr, evalfunc = interpFromQuantiles3(ppos=[ppos[0],ypos])
         
         x_min = np.asarray(evalfunc[0]).min()
         x_max = np.asarray(evalfunc[0]).max()
         y_min = np.asarray(evalfunc[1]).min()
         y_max = np.asarray(evalfunc[1]).max()
         
-        distro2, interpType, suc = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
+        distro, interpType, suc = computeDistroFunction(evalfunc[0],evalfunc[1],evalfunc[2], \
                                                          (x_min,x_max), (y_min,y_max))
         
-        sigQuant = convertNumpyArrayToOpenCVSignature(distro2)
-        emdQuant = cv.CalcEMD2(sigKDE, sigQuant, cv.CV_DIST_L2)
-        
-        titleKDE = dt + str(xpos) + '_' + str(ppos[1]) + '_kde_emd_' + str(emdKDE) 
-        titleQuantInterp = dt + str(xpos) + '_' + str(ppos[1]) + '_q_emd_'   + str(emdQuant) 
+        titleQuantInterp = dt + str(ppos[0]) + '_' + str(ypos) + '_toy_'  
         
         #plot interpolants in their range
-        plotKDE(kde,distro,(x_min,x_max), (y_min,y_max), titleKDE, co=green)
-        plotXYZSurf((x_min,x_max), (y_min,y_max), distro2, titleQuantInterp, samples_arr, col=blue)
-        plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(xpos) + \
-                       '_' + str(ppos[1]) + '_Interp_', arr=samples_arr )
-             
-        #find full resolution, non-interpolated distribution       
-        if xpos == 1.0:
-            #find quantile approx (include surface interpolant choice)
-            
-            x_min = np.asarray(distro[0]).min()
-            x_max = np.asarray(distro[0]).max()
-            y_min = np.asarray(distro[1]).min()
-            y_max = np.asarray(distro[1]).max()
-            
-            samples_arr_a, evalfunc_a = interpFromQuantiles3(ppos=[xpos,ppos[1]], ignore_cache = 'True', half=False)
-            
-            distro2_a, interpType_a, suc = computeDistroFunction(evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], \
-                                                             (x_min,x_max), (y_min,y_max))
-            
-            actualQuantSig = convertNumpyArrayToOpenCVSignature(distro2_a)
-            emdQuantA = cv.CalcEMD2(sigKDE, actualQuantSig, cv.CV_DIST_L2)
-            
-            title4_a = dt + str(xpos) + '_' + str(ppos[1]) + '_q_not_interpolated_emd_'   + str(emdQuantA)
-            
-            plotXYZSurf((x_min,x_max), (y_min,y_max), distro2_a, title4_a, samples_arr_a, col=blue)
-            plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc_a[0],evalfunc_a[1],evalfunc_a[2], title=dt + str(xpos) + \
-                           '_' + str(ppos[1]) + '_NOT_Interp_', arr=samples_arr_a )
+        plotXYZSurf((x_min,x_max), (y_min,y_max), distro, titleQuantInterp, samples_arr, col=blue)
+        plotXYZScatter((x_min,x_max), (y_min,y_max), evalfunc[0],evalfunc[1],evalfunc[2], title=dt + str(ppos[0]) + \
+                       '_' + str(ypos) + '_InterpToy_', arr=samples_arr )
     
-
     print 'finished!'
             
 if __name__ == "__main__":  
